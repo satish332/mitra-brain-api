@@ -127,6 +127,16 @@ app.post("/ask", async (req, res) => {
   }
 });
 
+// OpenAI-compatible endpoint for Vapi Custom LLM
+app.post('/v1/chat/completions', async (req, res) => {
+  try {
+    const { messages } = req.body;
+    const msgs = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || '' }));
+    if (!msgs.length) msgs.push({ role: 'user', content: 'Hello' });
+    const r = await client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system: MITRA_SYSTEM_PROMPT, messages: msgs });
+    res.json({ id: 'chatcmpl-' + Date.now(), object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v2', choices: [{ index: 0, message: { role: 'assistant', content: r.content[0].text }, finish_reason: 'stop' }], usage: {} });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 // ─── START ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
