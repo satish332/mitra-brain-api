@@ -1,0 +1,21 @@
+{
+  "name": "mitra-brain-api",
+  "version": "1.0.0",
+  "description": "Mitra Sahai — Brain API | Savitri Financial Solution Inc.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [],
+  "author": "Savitri Financial Solution Inc.",
+  "license": "ISC",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
