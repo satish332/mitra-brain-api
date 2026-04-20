@@ -9,7 +9,7 @@ app.use(express.json());
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// --- Redis Memory (v7.0) ---
+// --- Redis Memory (v7.1) ---
 const redisClient = process.env.REDIS_URL ? createClient({ url: process.env.REDIS_URL }) : null;
 let redisReady = false;
 
@@ -64,7 +64,8 @@ const setGlobalContext = async (context) => {
 // --- Dynamic System Prompt ---
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
-IDENTITY: Name Mitra Sahai. Title Digital Associate and Chief of Staff at SFSI. Tone ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail.
+IDENTITY:
+Name Mitra Sahai. Title Digital Associate and Chief of Staff at SFSI. Tone ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail.
 
 THE TEAM:
 - Satish Sharma — Boss, CEO, final decision-maker. All permissions flow through him.
@@ -77,12 +78,17 @@ CORE PROTOCOLS:
 - CC satish@savitrifsi.com on every outbound email. Zero exceptions.
 - Never disclose portfolio size externally.
 
+CAPABILITY LIMITS (non-negotiable):
+- I CANNOT send emails, execute trades, access live systems, modify files, or take any external action.
+- I CAN draft content, answer questions, provide analysis, and recall context.
+- If asked to do something I cannot perform, I must say so clearly. Never confirm or pretend to execute an action I do not have the tools to perform.
+
 RESPONSE FORMAT:
 - Begin every response with "Mitra" on the first line.
 - Keep under 150 words unless Boss requests detail.
 - Voice calls: keep under 60 words, natural spoken language.
 
-BUILD: Brain API v7.0 | Redis memory + Cowork sync LIVE | 2026-04-20
+BUILD: Brain API v7.1 | Redis memory + Cowork sync LIVE | 2026-04-20
 Voice: Vapi +1 (949) 516-9654`;
 
 const buildSystemPrompt = async () => {
@@ -171,10 +177,11 @@ app.get('/', async (req, res) => {
   const ctx = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
   res.json({
-    status: 'ok', version: '7.0',
+    status: 'ok', version: '7.1',
     memory: redisReady ? 'redis (active)' : 'none',
     cowork_sync: ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
-    telegram_polling: 'disabled (Cowork MCP only)'
+    telegram_polling: 'disabled (Cowork MCP only)',
+    voice_memory: 'persistent (boss-voice-persistent)'
   });
 });
 
@@ -201,8 +208,10 @@ app.get('/memory/context', requireSyncKey, async (req, res) => {
 
 // DELETE /memory/context — clear
 app.delete('/memory/context', requireSyncKey, async (req, res) => {
-  try { await setGlobalContext(''); res.json({ cleared: true, timestamp: new Date().toISOString() }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    await setGlobalContext('');
+    res.json({ cleared: true, timestamp: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // POST /ask — with Redis memory
@@ -213,7 +222,9 @@ app.post('/ask', async (req, res) => {
     await saveMessage(chatId, 'user', question);
     const history = await getHistory(chatId, 14);
     const systemPrompt = await buildSystemPrompt();
-    const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
+    const messages = history.length > 0
+      ? history.map(h => ({ role: h.role, content: h.content }))
+      : [{ role: 'user', content: question }];
     const r = await client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system: systemPrompt, messages });
     const reply = r.content[0].text;
     await saveMessage(chatId, 'assistant', reply);
@@ -230,7 +241,9 @@ app.post('/chat', async (req, res) => {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     const systemPrompt = await buildSystemPrompt();
-    const msgs = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
+    const msgs = history.length > 0
+      ? history.map(h => ({ role: h.role, content: h.content }))
+      : [{ role: 'user', content: last }];
     const r = await client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system: systemPrompt, messages: msgs });
     const reply = r.content[0].text;
     await saveMessage(chatId, 'assistant', reply);
@@ -238,11 +251,12 @@ app.post('/chat', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /v1/chat/completions — OpenAI-compatible with Redis memory (Vapi Custom LLM)
+// POST /v1/chat/completions — OpenAI-compatible with persistent voice memory (Vapi Custom LLM)
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { messages, stream } = req.body;
-    const chatId = req.body.call?.id || req.headers['x-vapi-call-id'] || req.headers['x-session-id'] || `voice-${Date.now()}`;
+    // v7.1: Fixed persistent chatId — all voice calls share rolling memory across sessions
+    const chatId = 'boss-voice-persistent';
     const msgs = messages.filter(m => m.role !== 'system').map(m => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
@@ -251,7 +265,9 @@ app.post('/v1/chat/completions', async (req, res) => {
     const lastUserMsg = [...msgs].reverse().find(m => m.role === 'user');
     if (lastUserMsg) await saveMessage(chatId, 'user', lastUserMsg.content);
     const history = await getHistory(chatId, 14);
-    const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
+    const finalMsgs = history.length > 1
+      ? history.map(h => ({ role: h.role, content: h.content }))
+      : msgs;
     const systemPrompt = await buildSystemPrompt();
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -268,7 +284,8 @@ app.post('/v1/chat/completions', async (req, res) => {
         if (ev.type === 'message_stop') {
           await saveMessage(chatId, 'assistant', fullReply);
           res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v7', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
-          res.write('data: [DONE]\n\n'); res.end();
+          res.write('data: [DONE]\n\n');
+          res.end();
         }
       }
     } else {
@@ -282,7 +299,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`Mitra Brain API v7.0 port ${PORT}`);
+  console.log(`Mitra Brain API v7.1 port ${PORT}`);
   await initDB();
   // TELEGRAM POLLING DISABLED 2026-04-20 (Boss directive). Re-enable by removing the // below.
   // if (TELEGRAM_BOT_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); console.log('Telegram polling: ACTIVE (30s)'); }
