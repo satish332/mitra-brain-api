@@ -9,17 +9,17 @@ app.use(express.json());
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── Redis (v8.0) ──────────────────────────────────────────────────────────────
+// ââ Redis (v8.0) ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const redisClient = process.env.REDIS_URL ? createClient({ url: process.env.REDIS_URL }) : null;
 let redisReady = false;
 
 const initDB = async () => {
-  if (!redisClient) { console.log('[Memory] No REDIS_URL — memory disabled'); return; }
+  if (!redisClient) { console.log('[Memory] No REDIS_URL â memory disabled'); return; }
   try {
     redisClient.on('error', (e) => console.error('[Redis] Error:', e.message));
     await redisClient.connect();
     redisReady = true;
-    console.log('[Memory] Redis connected — conversation memory + command queue ACTIVE');
+    console.log('[Memory] Redis connected â conversation memory + command queue ACTIVE');
   } catch (e) { console.error('[Memory] Redis init error:', e.message); }
 };
 
@@ -40,7 +40,7 @@ const getHistory = async (chatId, limit = 14) => {
   } catch (e) { return []; }
 };
 
-// ── Global Context (Cowork ↔ Brain API bridge) ───────────────────────────────
+// ââ Global Context (Cowork â Brain API bridge) âââââââââââââââââââââââââââââââ
 const GLOBAL_CONTEXT_KEY  = 'mitra:global_context';
 const CONTEXT_UPDATED_KEY = 'mitra:context_updated_at';
 
@@ -58,16 +58,17 @@ const setGlobalContext = async (context) => {
   } catch (e) { console.error('[Context] Save error:', e.message); return false; }
 };
 
-// ── Command Queue (v8.0 — Bidirectional Architecture) ────────────────────────
+// ââ Command Queue (v8.0 â Bidirectional Architecture) ââââââââââââââââââââââââ
 const COMMAND_QUEUE_KEY    = 'mitra:pending_commands';
 const COMPLETED_OUTPUT_KEY = 'mitra:completed_outputs';
 
+// Detect if Boss's voice command requires Local Mitra to take action
 const ACTION_PATTERNS = /\b(pull|fetch|get me|check|run|draft|send|compile|generate|look up|look into|research|monitor|track|update|schedule|book|confirm|review|analyze|summarize|brief me|market brief|portfolio|inbox|emails?|calendar|trades?|positions?|data|report|news)\b/i;
 const QUESTION_PATTERNS = /^(what|who|why|when|where|how|is|are|was|were|can you tell|do you know|tell me about|explain)\b/i;
 
 const isActionRequest = (text) => {
   const t = text.trim();
-  if (QUESTION_PATTERNS.test(t) && !ACTION_PATTERNS.test(t)) return false;
+  if (QUESTION_PATTERNS.test(t) && !ACTION_PATTERNS.test(t)) return false; // pure question
   return ACTION_PATTERNS.test(t);
 };
 
@@ -85,22 +86,32 @@ const queueCommand = async (commandText, source = 'voice') => {
     };
     await redisClient.rPush(COMMAND_QUEUE_KEY, JSON.stringify(cmd));
     await redisClient.lTrim(COMMAND_QUEUE_KEY, -20, -1);
+
+    // Send Telegram doorbell â Global Mitra label
     const preview = escapeHtml(commandText.slice(0, 200));
-    await tgSend(`🌐 Global Mitra\n\n📋 Command queued: "<b>${preview}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`);
-    console.log(`[Queue] Command queued: ${cmd.id} — "${commandText.slice(0, 80)}"`);
+    await tgSend(
+      `ð Global Mitra\n\nð Command queued: "<b>${preview}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`
+    );
+
+    console.log(`[Queue] Command queued: ${cmd.id} â "${commandText.slice(0, 80)}"`);
+    await manageGoGate(); // Activate GO gate immediately when command is queued
     return cmd.id;
-  } catch (e) { console.error('[Queue] Error:', e.message); return null; }
+  } catch (e) {
+    console.error('[Queue] Error:', e.message);
+    return null;
+  }
 };
-// ── Dynamic System Prompt ─────────────────────────────────────────────────────
+
+// ââ Dynamic System Prompt âââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
 Name Mitra Sahai. Title Digital Associate and Chief of Staff at SFSI. Tone ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail.
 
 THE TEAM:
-- Satish Sharma — Boss, CEO, final decision-maker. All permissions flow through him.
-- Julieta Sharma (Jing) — Madam Boss, CFO, Operations lead.
-- Pradnesh Sharma (Nesh) — The Brains, Investment Specialist.
+- Satish Sharma â Boss, CEO, final decision-maker. All permissions flow through him.
+- Julieta Sharma (Jing) â Madam Boss, CFO, Operations lead.
+- Pradnesh Sharma (Nesh) â The Brains, Investment Specialist.
 
 CORE PROTOCOLS:
 - NEVER take external action without Boss explicit GO.
@@ -111,7 +122,7 @@ CORE PROTOCOLS:
 CAPABILITY LIMITS (non-negotiable):
 - I CANNOT send emails, execute trades, access live systems, modify files, or pull live market data.
 - I CAN draft content, answer questions, provide analysis, and recall context from Cowork memory.
-- For action requests (pull data, check inbox, run analysis): say "I've queued that for Local Mitra. You'll get a Telegram notification when it's ready — reply GO to authorize execution."
+- For action requests (pull data, check inbox, run analysis): say "I've queued that for Local Mitra. You'll get a Telegram notification when it's ready â reply GO to authorize execution."
 - Never confirm or pretend to execute an action I do not have the tools to perform.
 
 RESPONSE FORMAT:
@@ -119,7 +130,7 @@ RESPONSE FORMAT:
 - Keep under 150 words unless Boss requests detail.
 - Voice calls: keep under 60 words, natural spoken language.
 
-BUILD: Brain API v8.0 | Redis memory + command queue + Cowork sync LIVE | 2026-04-20
+BUILD: Brain API v8.1 | Redis memory + command queue + Telegram GO gate + Cowork sync LIVE | 2026-04-20
 Voice: Vapi +1 (949) 516-9654`;
 
 const buildSystemPrompt = async () => {
@@ -128,7 +139,7 @@ const buildSystemPrompt = async () => {
   return `${MITRA_BASE_PROMPT}\n\n--- COWORK MEMORY SYNC ---\n${globalContext}\n--- END COWORK MEMORY ---`;
 };
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ââ Auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
 const requireSyncKey = (req, res, next) => {
   if (!MITRA_SYNC_KEY) return next();
@@ -137,7 +148,7 @@ const requireSyncKey = (req, res, next) => {
   next();
 };
 
-// ── Telegram ──────────────────────────────────────────────────────────────────
+// ââ Telegram ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SAVITRI_CHAT_ID    = process.env.SAVITRI_CHAT_ID || '-1003993831052';
 const TELEGRAM_API       = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
@@ -154,6 +165,90 @@ const tgSend = async (text) => {
   } catch (e) { console.error('[tgSend error]', e.message); }
 };
 
+// ââ Telegram GO Gate (v8.1 â lite poller, zero AI calls) âââââââââââââââââââââ
+// Activates ONLY when commands are pending. Processes ONLY GO/STOP.
+// This is NOT the disabled full poller â no AI calls, near-zero cost.
+let goGateInterval = null;
+
+const pollTelegramGate = async () => {
+  if (!TELEGRAM_BOT_TOKEN || !redisReady) return;
+  try {
+    const params = new URLSearchParams({ limit: '10' });
+    if (lastUpdateId > 0) params.set('offset', String(lastUpdateId + 1));
+    const res  = await fetch(`${TELEGRAM_API}/getUpdates?${params}`);
+    const data = await res.json();
+    if (!data.ok || !data.result?.length) return;
+
+    for (const update of data.result) {
+      if (update.update_id > lastUpdateId) lastUpdateId = update.update_id;
+      const msg = update.message ?? update.channel_post;
+      if (!msg?.text) continue;
+      const text = msg.text.trim();
+
+      if (GO_PATTERNS.test(text)) {
+        const entries = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+        const pending = entries.map(e => JSON.parse(e)).filter(c => c.status === 'pending_go');
+        if (pending.length > 0) {
+          const cmd        = pending[0];
+          const newEntries = entries.map(e => {
+            const c = JSON.parse(e);
+            if (c.id === cmd.id) { c.status = 'go_received'; return JSON.stringify(c); }
+            return e;
+          });
+          await redisClient.del(COMMAND_QUEUE_KEY);
+          for (const entry of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, entry);
+          await tgSend(`ð Global Mitra\n\nâ GO received â Local Mitra executing:\n<b>${escapeHtml(cmd.command.slice(0, 150))}</b>`);
+          console.log(`[GO Gate] GO received â ${cmd.id} status: go_received`);
+        } else {
+          await tgSend('Mitra\nGO noted. No commands currently pending.');
+        }
+
+      } else if (STOP_PATTERNS.test(text)) {
+        const entries = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+        const active  = entries.map(e => JSON.parse(e)).filter(c => c.status === 'pending_go' || c.status === 'go_received');
+        if (active.length > 0) {
+          const cmd        = active[0];
+          const newEntries = entries.map(e => {
+            const c = JSON.parse(e);
+            if (c.id === cmd.id) { c.status = 'cancelled'; return JSON.stringify(c); }
+            return e;
+          });
+          await redisClient.del(COMMAND_QUEUE_KEY);
+          for (const entry of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, entry);
+          await tgSend('ð Global Mitra\n\nCommand cancelled. Standing by.');
+          console.log(`[GO Gate] STOP â ${cmd.id} cancelled`);
+          await manageGoGate();
+        }
+      }
+    }
+    if (lastUpdateId > 0) await fetch(`${TELEGRAM_API}/getUpdates?offset=${lastUpdateId + 1}&limit=1`);
+  } catch (err) { console.error('[GO Gate] Poll error:', err.message); }
+};
+
+const startGoGate = () => {
+  if (goGateInterval || !TELEGRAM_BOT_TOKEN) return;
+  goGateInterval = setInterval(pollTelegramGate, 15000); // 15s
+  console.log('[GO Gate] Telegram GO gate ACTIVE (15s) â zero AI calls');
+};
+
+const stopGoGate = () => {
+  if (!goGateInterval) return;
+  clearInterval(goGateInterval); goGateInterval = null;
+  console.log('[GO Gate] Telegram GO gate stopped â no pending commands');
+};
+
+const manageGoGate = async () => {
+  if (!redisReady) return;
+  try {
+    const entries = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const pending = entries.map(e => JSON.parse(e))
+      .filter(c => c.status === 'pending_go' || c.status === 'go_received');
+    if (pending.length > 0 && !goGateInterval) startGoGate();
+    else if (pending.length === 0 && goGateInterval) stopGoGate();
+  } catch (e) { console.error('[GO Gate] Manage error:', e.message); }
+};
+
+// Telegram polling (disabled â Cowork MCP only. Un-comment to re-enable.)
 const GO_PATTERNS   = /^go\b|^confirmed?\b|^approved?\b/i;
 const ACK_PATTERNS  = /^(good|ok|okay|noted|thanks|thank you|got it|received|perfect|great|done)\s*\.?\s*$/i;
 const STOP_PATTERNS = /^stop\b|^cancel\b|^abort\b/i;
@@ -200,18 +295,20 @@ const pollTelegram = async () => {
     if (lastUpdateId > 0) await fetch(`${TELEGRAM_API}/getUpdates?offset=${lastUpdateId + 1}&limit=1`);
   } catch (err) { console.error('[poll error]', err.message); }
 };
-// ── Health ────────────────────────────────────────────────────────────────────
+
+// ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/', async (req, res) => {
   const ctx = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
   const queueEntries = redisReady ? await redisClient.lLen(COMMAND_QUEUE_KEY) : 0;
   res.json({
     status:           'ok',
-    version:          '8.0',
+    version:          '8.1',
     memory:           redisReady ? 'redis (active)' : 'none',
     cowork_sync:      ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
     command_queue:    redisReady ? `active (${queueEntries} entries)` : 'disabled',
-    telegram_polling: 'disabled (Cowork MCP only)',
+    telegram_go_gate: goGateInterval ? 'ACTIVE (15s â waiting for GO)' : 'standby (activates on command)',
+    telegram_polling: 'disabled (full poller â Cowork MCP only)',
     voice_memory:     'persistent (boss-voice-persistent)',
     endpoints: ['GET /', 'POST /ask', 'POST /chat', 'POST /v1/chat/completions',
       'POST|GET|DELETE /memory/context',
@@ -220,7 +317,7 @@ app.get('/', async (req, res) => {
   });
 });
 
-// ── Memory Context Endpoints ──────────────────────────────────────────────────
+// ââ Memory Context Endpoints ââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/memory/context', requireSyncKey, async (req, res) => {
   try {
     const { context } = req.body;
@@ -247,8 +344,9 @@ app.delete('/memory/context', requireSyncKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Command Queue Endpoints (v8.0) ────────────────────────────────────────────
+// ââ Command Queue Endpoints (v8.0) ââââââââââââââââââââââââââââââââââââââââââââ
 
+// GET /commands/pending â Chrome JS polls this every 60s
 app.get('/commands/pending', requireSyncKey, async (req, res) => {
   if (!redisReady) return res.json({ commands: [] });
   try {
@@ -259,6 +357,7 @@ app.get('/commands/pending', requireSyncKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /commands/acknowledge â Chrome JS calls when Boss sends GO in Telegram
 app.post('/commands/acknowledge', requireSyncKey, async (req, res) => {
   const { commandId } = req.body;
   if (!commandId) return res.status(400).json({ error: 'commandId required' });
@@ -284,11 +383,13 @@ app.post('/commands/acknowledge', requireSyncKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// POST /commands/complete â Local Mitra posts output after execution
 app.post('/commands/complete', requireSyncKey, async (req, res) => {
   const { commandId, output, summary } = req.body;
   if (!commandId || !output) return res.status(400).json({ error: 'commandId and output required' });
   if (!redisReady) return res.status(503).json({ error: 'Redis not ready' });
   try {
+    // 1. Save to completed outputs
     const result = {
       commandId,
       output:       output.slice(0, 8000),
@@ -297,6 +398,8 @@ app.post('/commands/complete', requireSyncKey, async (req, res) => {
     };
     await redisClient.rPush(COMPLETED_OUTPUT_KEY, JSON.stringify(result));
     await redisClient.lTrim(COMPLETED_OUTPUT_KEY, -10, -1);
+
+    // 2. Mark command complete in queue
     const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
     const newEntries = entries.map(e => {
       const cmd = JSON.parse(e);
@@ -305,15 +408,23 @@ app.post('/commands/complete', requireSyncKey, async (req, res) => {
     });
     await redisClient.del(COMMAND_QUEUE_KEY);
     for (const entry of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, entry);
+
+    // 3. Append to global context so voice debrief has the output
     const existingCtx = await getGlobalContext();
-    const outputBlock = `\n\n[EXECUTION OUTPUT — ${result.completed_at}]\n${result.summary}`;
+    const outputBlock = `\n\n[EXECUTION OUTPUT â ${result.completed_at}]\n${result.summary}`;
     await setGlobalContext((existingCtx + outputBlock).slice(-8000));
-    await tgSend(`🖥️ Local Mitra\n\n✅ Execution complete.\n\n${escapeHtml(result.summary)}\n\nCall Global Mitra for full verbal brief.`);
+
+    // 4. Send Telegram output notification â Local Mitra label
+    await tgSend(
+      `ð¥ï¸ Local Mitra\n\nâ Execution complete.\n\n${escapeHtml(result.summary)}\n\nCall Global Mitra for full verbal brief.`
+    );
+
     console.log(`[Queue] Command ${commandId} complete. Output: ${result.summary.slice(0, 80)}`);
     res.json({ saved: true, commandId, outputChars: output.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// DELETE /commands/:id â cancel a queued command
 app.delete('/commands/:id', requireSyncKey, async (req, res) => {
   const { id } = req.params;
   if (!redisReady) return res.status(503).json({ error: 'Redis not ready' });
@@ -330,7 +441,8 @@ app.delete('/commands/:id', requireSyncKey, async (req, res) => {
     res.json({ cancelled: true, commandId: id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-// ── /ask ──────────────────────────────────────────────────────────────────────
+
+// ââ /ask â with Redis memory ââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/ask', async (req, res) => {
   try {
     const { question, chatId = 'ask-session' } = req.body;
@@ -346,7 +458,7 @@ app.post('/ask', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /chat ─────────────────────────────────────────────────────────────────────
+// ââ /chat â with Redis memory âââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/chat', async (req, res) => {
   try {
     const { messages, chatId = 'chat-session' } = req.body;
@@ -363,29 +475,36 @@ app.post('/chat', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /v1/chat/completions — Vapi voice endpoint ───────────────────────────────
+// ââ /v1/chat/completions â Vapi voice endpoint, persistent memory + command queue ââ
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { messages, stream } = req.body;
+    // v7.1+: Fixed persistent chatId â all voice calls share rolling memory
     const chatId = 'boss-voice-persistent';
+
     const msgs = messages.filter(m => m.role !== 'system').map(m => ({
       role:    m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
     }));
     if (!msgs.length) msgs.push({ role: 'user', content: 'Hello' });
+
     const lastUserMsg = [...msgs].reverse().find(m => m.role === 'user');
     if (lastUserMsg) await saveMessage(chatId, 'user', lastUserMsg.content);
+
+    // v8.0: Detect action requests and queue for Local Mitra
     let commandQueued = false;
     if (lastUserMsg && isActionRequest(lastUserMsg.content)) {
       const cmdId = await queueCommand(lastUserMsg.content, 'voice');
       if (cmdId) {
         commandQueued = true;
-        console.log(`[Voice] Action detected — queued ${cmdId}: "${lastUserMsg.content.slice(0, 60)}"`);
+        console.log(`[Voice] Action detected â queued ${cmdId}: "${lastUserMsg.content.slice(0, 60)}"`);
       }
     }
+
     const history      = await getHistory(chatId, 14);
     const finalMsgs    = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     const systemPrompt = await buildSystemPrompt();
+
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
@@ -414,13 +533,16 @@ app.post('/v1/chat/completions', async (req, res) => {
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ââ Start âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v8.0 port ${PORT}`);
+  console.log(`\nMitra Brain API v8.1 port ${PORT}`);
   console.log(`Agent: Mitra Sahai | SFSI Chief of Staff`);
-  console.log(`Features: Redis memory + command queue + Cowork sync + bidirectional architecture`);
+  console.log(`Features: Redis memory + command queue + GO gate + Cowork sync + bidirectional architecture`);
   await initDB();
-  // TELEGRAM POLLING DISABLED 2026-04-20 (Boss directive). Re-enable by un-commenting below.
+  // GO gate: self-managing, activates only when commands are pending (zero AI cost)
+  setInterval(manageGoGate, 60000); // Sync GO gate state every 60s
+  // TELEGRAM FULL POLLING DISABLED 2026-04-20 (Boss directive â costly AI per message).
+  // GO gate above handles GO/STOP only. Re-enable full poller by un-commenting below.
   // if (TELEGRAM_BOT_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); console.log('Telegram polling: ACTIVE (30s)'); }
 });
