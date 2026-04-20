@@ -133,5 +133,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Mitra Brain API v5.0 port ${PORT}`);
   await initDB();
-  if (TELEGRAM_BOT_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); console.log('Telegram polling: ACTIVE (30s)'); }
+  // TELEGRAM POLLING DISABLED 2026-04-20 (Boss directive). Re-enable by removing the // on the line below.
+    // if (TELEGRAM_BOT_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); console.log('Telegram polling: ACTIVE (30s)'); }
 });
