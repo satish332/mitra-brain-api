@@ -62,14 +62,36 @@ const setGlobalContext = async (context) => {
 const COMMAND_QUEUE_KEY    = 'mitra:pending_commands';
 const COMPLETED_OUTPUT_KEY = 'mitra:completed_outputs';
 
-// Detect if Boss's voice command requires Local Mitra to take action
-const ACTION_PATTERNS = /\b(pull|fetch|get me|check|run|draft|send|compile|generate|look up|look into|research|monitor|track|update|schedule|book|confirm|review|analyze|summarize|brief me|market brief|portfolio|inbox|emails?|calendar|trades?|positions?|data|report|news)\b/i;
-const QUESTION_PATTERNS = /^(what|who|why|when|where|how|is|are|was|were|can you tell|do you know|tell me about|explain)\b/i;
+// ââ Action Detection (v8.2 â robust for non-native English speakers) ââââââââââ
+// Cast a wide net: native or not, if Boss is trying to get something done, catch it.
+
+// Explicit action verbs
+const ACTION_PATTERNS = /\b(pull|fetch|get me|check|run|draft|write|create|make|prepare|send|forward|reply|compile|generate|look up|look into|research|monitor|track|update|schedule|book|confirm|review|analyze|analyse|summarize|summarise|brief me|market brief|portfolio|inbox|emails?|calendar|trades?|positions?|data|report|news|find|show me|give me|tell me|help me|do the|do a|set up|set a|open|search|calculate|compute|convert|translate|read|scan|compare|verify|check on|look at|handle|process|submit|file|complete|build|list|show|display|send out|reach out|reach|pull up|bring up|set me|remind me|add|post|delete|remove|upload|download)\b/i;
+
+// Intent signals â non-native speakers often lead with these instead of action verbs
+// e.g. "I need the report", "please the email", "I am wanting to see"
+const INTENT_PATTERNS = /\b(please|can you|could you|would you|i need|i want|i would like|i'd like|i am needing|i am wanting|i am looking|we need|we want|help me|for me|for us|on my behalf|i require|we require)\b/i;
+
+// Pure informational question starters (only when no action or intent signal present)
+const QUESTION_PATTERNS = /^(what is|what are|what was|what were|who is|who are|why is|why are|when is|when are|where is|where are|how is|how are|how do|can you tell me|do you know about|explain|describe)\b/i;
+
+// Pure acknowledgment / greeting â never an action
+const ACK_PATTERNS = /^(yes|no|ok|okay|sure|thanks|thank you|hello|hi|hey|got it|good|great|perfect|noted|received|understood|bye|goodbye|sounds good|that's fine|alright|all right|fine|correct|exactly|right)\s*[.!]?\s*$/i;
 
 const isActionRequest = (text) => {
   const t = text.trim();
-  if (QUESTION_PATTERNS.test(t) && !ACTION_PATTERNS.test(t)) return false; // pure question
-  return ACTION_PATTERNS.test(t);
+  // Never queue a pure acknowledgment or greeting
+  if (ACK_PATTERNS.test(t)) return false;
+  // Explicit action verb â always queue
+  if (ACTION_PATTERNS.test(t)) return true;
+  // Intent signal present (covers non-native phrasings) â queue
+  if (INTENT_PATTERNS.test(t)) return true;
+  // Pure question with no action/intent signal â informational only
+  if (QUESTION_PATTERNS.test(t)) return false;
+  // Longer utterances that don't match any pattern above â likely actionable
+  // (non-native speakers may use unusual phrasing; err on side of queuing)
+  if (t.split(/\s+/).length > 10) return true;
+  return false;
 };
 
 const escapeHtml = (str) => str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -122,21 +144,24 @@ CORE PROTOCOLS:
 CAPABILITY LIMITS (non-negotiable):
 - I CANNOT send emails, execute trades, access live systems, modify files, or pull live market data.
 - I CAN draft content, answer questions, provide analysis, and recall context from Cowork memory.
-- For action requests (pull data, check inbox, run analysis): say "I've queued that for Local Mitra. You'll get a Telegram notification when it's ready â reply GO to authorize execution."
-- Never confirm or pretend to execute an action I do not have the tools to perform.
+- If [QUEUE STATUS: queued as cmd_...] appears in your context: tell Boss "Queued for Local Mitra â you'll get a Telegram notification, reply GO to authorize."
+- If [QUEUE STATUS: queue_failed] appears: tell Boss "Queue attempt failed â please retry or check Cowork."
+- If neither appears and Boss requests an action: say "I'm queuing that for Local Mitra now â watch for a Telegram notification."
+- NEVER claim a command is queued unless QUEUE STATUS in your context explicitly confirms it.
 
 RESPONSE FORMAT:
 - Begin every response with "Mitra" on the first line.
 - Keep under 150 words unless Boss requests detail.
 - Voice calls: keep under 60 words, natural spoken language.
 
-BUILD: Brain API v8.1 | Redis memory + command queue + Telegram GO gate + Cowork sync LIVE | 2026-04-20
+BUILD: Brain API v8.2 | Redis memory + command queue + Telegram GO gate + Cowork sync LIVE | 2026-04-20
 Voice: Vapi +1 (949) 516-9654`;
 
-const buildSystemPrompt = async () => {
+const buildSystemPrompt = async (queueStatus = null) => {
   const globalContext = await getGlobalContext();
-  if (!globalContext) return MITRA_BASE_PROMPT;
-  return `${MITRA_BASE_PROMPT}\n\n--- COWORK MEMORY SYNC ---\n${globalContext}\n--- END COWORK MEMORY ---`;
+  const queueBlock    = queueStatus ? `\n\n[QUEUE STATUS: ${queueStatus}]` : '';
+  if (!globalContext) return `${MITRA_BASE_PROMPT}${queueBlock}`;
+  return `${MITRA_BASE_PROMPT}\n\n--- COWORK MEMORY SYNC ---\n${globalContext}\n--- END COWORK MEMORY ---${queueBlock}`;
 };
 
 // ââ Auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
@@ -249,9 +274,9 @@ const manageGoGate = async () => {
 };
 
 // Telegram polling (disabled â Cowork MCP only. Un-comment to re-enable.)
-const GO_PATTERNS   = /^go\b|^confirmed?\b|^approved?\b/i;
-const ACK_PATTERNS  = /^(good|ok|okay|noted|thanks|thank you|got it|received|perfect|great|done)\s*\.?\s*$/i;
-const STOP_PATTERNS = /^stop\b|^cancel\b|^abort\b/i;
+const GO_PATTERNS      = /^go\b|^confirmed?\b|^approved?\b/i;
+const TG_ACK_PATTERNS  = /^(good|ok|okay|noted|thanks|thank you|got it|received|perfect|great|done)\s*\.?\s*$/i;
+const STOP_PATTERNS    = /^stop\b|^cancel\b|^abort\b/i;
 
 const processMessage = async (text, messageId, chatId) => {
   const trimmed = text.trim();
@@ -264,7 +289,7 @@ const processMessage = async (text, messageId, chatId) => {
     const r = 'Mitra\nGO received. Executing now. Will update you when complete.';
     await tgSend(r); await saveMessage(chatId, 'assistant', r); return;
   }
-  if (ACK_PATTERNS.test(trimmed)) return;
+  if (TG_ACK_PATTERNS.test(trimmed)) return;
   try {
     const history = await getHistory(chatId, 14);
     const systemPrompt = await buildSystemPrompt();
@@ -303,7 +328,7 @@ app.get('/', async (req, res) => {
   const queueEntries = redisReady ? await redisClient.lLen(COMMAND_QUEUE_KEY) : 0;
   res.json({
     status:           'ok',
-    version:          '8.1',
+    version:          '8.2',
     memory:           redisReady ? 'redis (active)' : 'none',
     cowork_sync:      ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
     command_queue:    redisReady ? `active (${queueEntries} entries)` : 'disabled',
@@ -491,19 +516,26 @@ app.post('/v1/chat/completions', async (req, res) => {
     const lastUserMsg = [...msgs].reverse().find(m => m.role === 'user');
     if (lastUserMsg) await saveMessage(chatId, 'user', lastUserMsg.content);
 
-    // v8.0: Detect action requests and queue for Local Mitra
-    let commandQueued = false;
-    if (lastUserMsg && isActionRequest(lastUserMsg.content)) {
+    // v8.2: Detect action requests and queue for Local Mitra â with queue feedback loop
+    let queueStatus = null;
+    const isAction  = lastUserMsg ? isActionRequest(lastUserMsg.content) : false;
+    // Diagnostic log: every voice turn logged so we can audit detection in Railway logs
+    console.log(`[Voice] Turn â msg: "${(lastUserMsg?.content || '').slice(0, 100)}" | isAction: ${isAction}`);
+    if (lastUserMsg && isAction) {
       const cmdId = await queueCommand(lastUserMsg.content, 'voice');
       if (cmdId) {
-        commandQueued = true;
-        console.log(`[Voice] Action detected â queued ${cmdId}: "${lastUserMsg.content.slice(0, 60)}"`);
+        queueStatus = `queued as ${cmdId}`;
+        console.log(`[Voice] Queued ${cmdId} â Telegram doorbell sent`);
+      } else {
+        queueStatus = 'queue_failed';
+        console.log(`[Voice] Queue failed â Redis unavailable for: "${lastUserMsg.content.slice(0, 60)}"`);
       }
     }
 
     const history      = await getHistory(chatId, 14);
-    const finalMsgs    = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
-    const systemPrompt = await buildSystemPrompt();
+    // Fix: history.length > 0 (was > 1, which discarded single-message history)
+    const finalMsgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
+    const systemPrompt = await buildSystemPrompt(queueStatus);
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -536,7 +568,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 // ââ Start âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v8.1 port ${PORT}`);
+  console.log(`\nMitra Brain API v8.2 port ${PORT}`);
   console.log(`Agent: Mitra Sahai | SFSI Chief of Staff`);
   console.log(`Features: Redis memory + command queue + GO gate + Cowork sync + bidirectional architecture`);
   await initDB();
