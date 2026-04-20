@@ -1,7 +1,7 @@
 {
   "name": "mitra-brain-api",
-  "version": "1.0.0",
-  "description": "Mitra Sahai — Brain API | Savitri Financial Solution Inc.",
+  "version": "5.0.0",
+  "description": "Mitra Sahai — Brain API v5.0 with Postgres Memory | Savitri Financial Solution Inc.",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "pg": "^8.13.3"
   }
 }
