@@ -923,7 +923,7 @@ app.post('/chat', async (req, res) => {
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { messages, stream } = req.body;
-    const chatId = 'boss-voice-persistent';
+    const chatId = 'boss-voice-v2';
     const msgs = messages.filter(m => m.role !== 'system').map(m => ({
       role:    m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
