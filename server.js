@@ -604,7 +604,7 @@ app.post('/log-thesis', requireKey, async (req, res) => {
     await pool.query(
       `INSERT INTO decisions (company_id, type, decided_by, approved_by, rationale, outcome)
        VALUES ($1,$2,$3,$4,$5,$6)`,
-      [companyId, 'Thesis Logged', added_by, 'Pending Boss Review', thesis.slice(0, 500), 'Pending']
+      [companyId, 'Thesis Logged', added_by, 'Pending Boss Review', (thesis||'').slice(0, 500), 'Pending']
     );
 
     // Cross-reference live market data
@@ -628,7 +628,7 @@ app.post('/log-thesis', requireKey, async (req, res) => {
       company_id: companyId,
       company: name,
       ticker: ticker || 'Pre-IPO',
-      thesis_chars: thesis.length,
+      thesis_chars: (thesis||'').length,
       conviction: conviction_level || 3,
       market_data: marketData,
       timestamp: new Date().toISOString()
