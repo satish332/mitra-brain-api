@@ -469,8 +469,54 @@ Voice: Vapi +1 (949) 516-9654`;
 
 const buildSystemPrompt = async () => {
   const ctx = await getGlobalContext();
-  if (!ctx) return MITRA_BASE_PROMPT;
-  return `${MITRA_BASE_PROMPT}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+
+  // ── Live Digital Twin context from Postgres ──────────────────────────────
+  let twinContext = '';
+  if (pgReady) {
+    try {
+      const { rows: positions } = await pool.query(
+        `SELECT c.name, c.ticker, c.sector, c.conviction_level, c.thesis, c.kill_switch, c.next_catalyst,
+                p.entry_price, p.shares, p.tranche_plan, p.notes as pos_notes
+         FROM positions p JOIN companies c ON c.id = p.company_id
+         WHERE p.status = 'Open' ORDER BY p.entry_price * p.shares DESC NULLS LAST`
+      );
+      const { rows: watchlist } = await pool.query(
+        `SELECT name, ticker, sector, conviction_level, thesis, kill_switch, next_catalyst
+         FROM companies WHERE status NOT IN ('Position Open') ORDER BY conviction_level DESC LIMIT 20`
+      );
+
+      twinContext = '\n\n--- DIGITAL TWIN — SFSI LIVE PORTFOLIO & WATCHLIST ---\n';
+
+      if (positions.length > 0) {
+        twinContext += `OPEN POSITIONS (${positions.length}):\n`;
+        for (const p of positions) {
+          const ep = p.entry_price ? `@ $${parseFloat(p.entry_price).toFixed(2)}` : '';
+          const shares = p.shares ? `${parseFloat(p.shares).toFixed(3)} shares` : '';
+          const thesis = p.thesis && !p.thesis.includes('Thesis Pending') ? ` | ${p.thesis.slice(0, 120)}` : '';
+          const kill = p.kill_switch ? ` | Kill switch: ${p.kill_switch.slice(0, 80)}` : '';
+          const catalyst = p.next_catalyst ? ` | Next catalyst: ${p.next_catalyst}` : '';
+          twinContext += `• ${p.name} (${p.ticker}) | ${p.sector} | ${shares} ${ep} | Conviction: ${p.conviction_level}/5${thesis}${kill}${catalyst}\n`;
+        }
+      }
+
+      if (watchlist.length > 0) {
+        twinContext += `\nWATCHLIST (${watchlist.length} companies):\n`;
+        for (const c of watchlist) {
+          const thesis = c.thesis && !c.thesis.includes('Thesis Pending') ? ` | ${c.thesis.slice(0, 100)}` : '';
+          const kill = c.kill_switch ? ` | Kill: ${c.kill_switch.slice(0, 60)}` : '';
+          twinContext += `• ${c.name} (${c.ticker}) | ${c.sector} | Conviction: ${c.conviction_level}/5${thesis}${kill}\n`;
+        }
+      }
+
+      twinContext += '--- END DIGITAL TWIN ---';
+    } catch (e) {
+      twinContext = `\n[Digital Twin query error: ${e.message}]`;
+    }
+  }
+
+  const base = MITRA_BASE_PROMPT + twinContext;
+  if (!ctx) return base;
+  return `${base}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
 // ââ Auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
