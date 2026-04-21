@@ -565,23 +565,33 @@ app.get('/', async (req, res) => {
 app.post('/log-thesis', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready â check DATABASE_URL' });
   const { name, ticker, thesis, conviction_level, kill_switch, next_catalyst, notes, added_by = 'Nesh' } = req.body;
-  if (!name || !thesis) return res.status(400).json({ error: 'name and thesis required' });
+  if (!ticker && !name) return res.status(400).json({ error: 'ticker or name required' });
 
   try {
-    // Upsert company
-    const existing = await pool.query('SELECT id FROM companies WHERE LOWER(name) = LOWER($1)', [name]);
+    // Look up existing record — ticker first (fastest), then by name
+    let existing = null;
+    if (ticker) {
+      existing = await pool.query('SELECT id FROM companies WHERE UPPER(ticker) = UPPER($1)', [ticker]);
+    }
+    if ((!existing || existing.rows.length === 0) && name) {
+      existing = await pool.query('SELECT id FROM companies WHERE LOWER(name) = LOWER($1)', [name]);
+    }
     let companyId;
 
-    if (existing.rows.length > 0) {
+    if (existing && existing.rows.length > 0) {
+      // PARTIAL UPDATE — only overwrite fields that are explicitly provided; leave others untouched
       companyId = existing.rows[0].id;
       await pool.query(
-        `UPDATE companies SET thesis=$1, conviction_level=COALESCE($2,conviction_level),
+        `UPDATE companies SET
+         thesis=COALESCE($1,thesis), conviction_level=COALESCE($2,conviction_level),
          kill_switch=COALESCE($3,kill_switch), next_catalyst=COALESCE($4,next_catalyst),
-         notes=COALESCE($5,notes), ticker=COALESCE($6,ticker), updated_at=NOW()
-         WHERE id=$7`,
-        [thesis, conviction_level, kill_switch, next_catalyst, notes, ticker, companyId]
+         notes=COALESCE($5,notes), ticker=COALESCE($6,ticker), name=COALESCE($7,name),
+         updated_at=NOW() WHERE id=$8`,
+        [thesis||null, conviction_level||null, kill_switch||null, next_catalyst||null, notes||null, ticker||null, name||null, companyId]
       );
     } else {
+      // New company — name and thesis are required for INSERT
+      if (!name || !thesis) return res.status(400).json({ error: 'name and thesis required for new company' });
       const { rows } = await pool.query(
         `INSERT INTO companies (name, ticker, thesis, conviction_level, kill_switch, next_catalyst, notes, added_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
