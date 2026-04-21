@@ -103,6 +103,7 @@ const initPostgres = async () => {
     console.log('[Postgres] Connected â Digital Twin ACTIVE');
     await createSchema();
     await seedIfEmpty();
+    await seedBrokerageData();
   } catch (e) { console.error('[Postgres] Init error:', e.message); }
 };
 
@@ -464,7 +465,7 @@ RESPONSE FORMAT:
 - Text/Telegram: 2-4 sentences unless detail requested.
 - ISRG Stress Test format: Delta | Nesh Factor | So What.
 
-BUILD: Brain API v9.0 | Digital Twin (Postgres) + Conversation Memory (Redis) | 2026-04-20
+BUILD: Brain API v10.0 | IBOR Ledger (Phase 2A) + Digital Twin (Postgres) + Conversation Memory (Redis) | 2026-04-20
 Voice: Vapi +1 (949) 516-9654`;
 
 const buildSystemPrompt = async () => {
@@ -539,7 +540,7 @@ app.get('/', async (req, res) => {
   const positionCount = pgReady ? (await pool.query("SELECT COUNT(*) FROM positions WHERE status='Open'")).rows[0].count : 0;
   res.json({
     status:         'ok',
-    version:        '9.0',
+    version:        '10.0',
     build:          'Digital Twin â Institutional Memory Engine',
     memory: {
       conversation: redisReady ? 'Redis (active)' : 'disabled',
@@ -552,6 +553,9 @@ app.get('/', async (req, res) => {
       chat:          'POST /ask | POST /chat',
       twin_write:    'POST /log-company | POST /log-thesis | POST /log-position | POST /log-decision',
       twin_read:     'GET /company/:name | GET /portfolio | GET /watchlist',
+      ibor_sync:     'POST /v1/sync/portfolio',
+      ibor_read:     'GET /v1/portfolio/:account_id | GET /v1/transactions/:account_id | GET /v1/income/:account_id',
+      ibor_write:    'POST /v1/log-income',
       memory:        'POST|GET|DELETE /memory/context',
       commands:      'GET /commands/pending | POST /commands/acknowledge | POST /commands/complete'
     }
@@ -970,7 +974,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 // ââ Start âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v9.0 â Digital Twin | Institutional Memory Engine`);
+  console.log(`\nMitra Brain API v10.0 â Digital Twin | Institutional Memory Engine`);
   console.log(`SFSI Chief of Staff | savitrifsi.com`);
   console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
   await initRedis();
