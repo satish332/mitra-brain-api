@@ -1,7 +1,7 @@
 {
   "name": "mitra-brain-api",
-  "version": "6.0.0",
-  "description": "Mitra Sahai â Brain API v6.0 with Redis Memory | Savitri Financial Solution Inc.",
+  "version": "9.0.0",
+  "description": "Mitra Sahai — Brain API v9.0 | SFSI Digital Twin | Institutional Memory Engine",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -17,6 +17,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "redis": "^4.7.0"
+    "pg": "^8.13.3",
+    "redis": "^4.6.0"
   }
 }
