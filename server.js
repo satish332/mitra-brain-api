@@ -11,7 +11,7 @@ app.use(express.json());
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── FMP Market Data Helper ────────────────────────────────────────────────────
+// ââ FMP Market Data Helper ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const FMP_KEY = process.env.FMP_API_KEY || '';
 const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
 
@@ -41,17 +41,17 @@ const fmpProfile = async (ticker) => {
   } catch { return null; }
 };
 
-// ── Redis (Conversation Memory) ───────────────────────────────────────────────
+// ââ Redis (Conversation Memory) âââââââââââââââââââââââââââââââââââââââââââââââ
 const redisClient = process.env.REDIS_URL ? createClient({ url: process.env.REDIS_URL }) : null;
 let redisReady = false;
 
 const initRedis = async () => {
-  if (!redisClient) { console.log('[Redis] No REDIS_URL — conversation memory disabled'); return; }
+  if (!redisClient) { console.log('[Redis] No REDIS_URL â conversation memory disabled'); return; }
   try {
     redisClient.on('error', (e) => console.error('[Redis]', e.message));
     await redisClient.connect();
     redisReady = true;
-    console.log('[Redis] Connected — conversation memory ACTIVE');
+    console.log('[Redis] Connected â conversation memory ACTIVE');
   } catch (e) { console.error('[Redis] Init error:', e.message); }
 };
 
@@ -71,7 +71,7 @@ const getHistory = async (chatId, limit = 14) => {
   } catch { return []; }
 };
 
-// ── Global Context (Cowork <> Brain sync) ─────────────────────────────────────
+// ââ Global Context (Cowork <> Brain sync) âââââââââââââââââââââââââââââââââââââ
 const GLOBAL_CONTEXT_KEY  = 'mitra:global_context';
 const CONTEXT_UPDATED_KEY = 'mitra:context_updated_at';
 
@@ -89,18 +89,18 @@ const setGlobalContext = async (context) => {
   } catch { return false; }
 };
 
-// ── Postgres (Digital Twin — Institutional Memory) ────────────────────────────
+// ââ Postgres (Digital Twin â Institutional Memory) ââââââââââââââââââââââââââââ
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 let pgReady = false;
 
 const initPostgres = async () => {
-  if (!pool) { console.log('[Postgres] No DATABASE_URL — Digital Twin disabled'); return; }
+  if (!pool) { console.log('[Postgres] No DATABASE_URL â Digital Twin disabled'); return; }
   try {
     await pool.query('SELECT 1');
     pgReady = true;
-    console.log('[Postgres] Connected — Digital Twin ACTIVE');
+    console.log('[Postgres] Connected â Digital Twin ACTIVE');
     await createSchema();
     await seedIfEmpty();
   } catch (e) { console.error('[Postgres] Init error:', e.message); }
@@ -174,14 +174,14 @@ const createSchema = async () => {
       created_at        TIMESTAMPTZ DEFAULT NOW()
     );
   `);
-  console.log('[Postgres] Schema verified — 5 tables ready');
+  console.log('[Postgres] Schema verified â 5 tables ready');
 };
 
-// ── Seed Data — Day 1 Digital Twin Records ────────────────────────────────────
+// ââ Seed Data â Day 1 Digital Twin Records ââââââââââââââââââââââââââââââââââââ
 const seedIfEmpty = async () => {
   const { rows } = await pool.query('SELECT COUNT(*) FROM companies');
   if (parseInt(rows[0].count) > 0) {
-    console.log(`[Postgres] Digital Twin has ${rows[0].count} companies — skipping seed`);
+    console.log(`[Postgres] Digital Twin has ${rows[0].count} companies â skipping seed`);
     return;
   }
   console.log('[Postgres] Seeding Digital Twin with 5 founding records...');
@@ -193,10 +193,10 @@ const seedIfEmpty = async () => {
       sector: 'Medical Devices',
       stage: 'Public',
       status: 'Position Open',
-      thesis: 'Structural monopoly on robotic-assisted surgery. The da Vinci system creates a razor-and-blade revenue model — hospitals locked in via training, consumables, and multi-year service contracts. Procedure volume growing 12-15% annually is the primary alpha driver. Global expansion (OUS procedures +20% YoY) provides a second growth engine independent of US hospital capex cycles.',
+      thesis: 'Structural monopoly on robotic-assisted surgery. The da Vinci system creates a razor-and-blade revenue model â hospitals locked in via training, consumables, and multi-year service contracts. Procedure volume growing 12-15% annually is the primary alpha driver. Global expansion (OUS procedures +20% YoY) provides a second growth engine independent of US hospital capex cycles.',
       conviction_level: 4,
       kill_switch: 'Competition narrows da Vinci gross margin below 60% for two consecutive quarters; FDA approves a competing system at comparable clinical capability at 30%+ lower cost; US procedure growth falls below 8% for two consecutive quarters; management guidance cut materially on FY26 revenue.',
-      next_catalyst: 'Q1 2026 Earnings — April 21, 2026. Consensus: EPS $2.08, Revenue $2.61B.',
+      next_catalyst: 'Q1 2026 Earnings â April 21, 2026. Consensus: EPS $2.08, Revenue $2.61B.',
       pre_earnings_note: 'Pre-earnings consensus (Mitra synthesis, Apr 20 2026): EPS $2.08, Revenue $2.61B. Key watch items: (1) OUS procedure growth rate vs Q4 2025 (+20%), (2) Ion bronchoscopy adoption cadence, (3) FY26 guidance raised/maintained/cut, (4) da Vinci 5 system placement acceleration. Bull case: Beat on revenue + raise guidance = hold and add tranche 2 at $450. Bear case: Miss + guidance cut = re-evaluate thesis, consider trim.',
       notes: 'Position initiated Apr 16 2026 at $470. Tranches 2 and 3 pending at $450 and $430 respectively.',
       added_by: 'Mitra'
@@ -207,10 +207,10 @@ const seedIfEmpty = async () => {
       sector: 'Pharmaceuticals',
       stage: 'Public',
       status: 'Active Watch',
-      thesis: 'GLP-1 market leader. Ozempic and Wegovy create durable revenue with strong IP protection through 2031. Global obesity epidemic provides multi-decade demand tailwind. Research in progress — Nesh developing full thesis.',
+      thesis: 'GLP-1 market leader. Ozempic and Wegovy create durable revenue with strong IP protection through 2031. Global obesity epidemic provides multi-decade demand tailwind. Research in progress â Nesh developing full thesis.',
       conviction_level: 3,
       kill_switch: 'Eli Lilly tirzepatide gains >40% market share in obesity indication; GLP-1 cardiovascular benefit claims challenged by FDA; reimbursement coverage materially restricted by major US payers.',
-      next_catalyst: 'Q1 2026 Earnings — upcoming. Watch Wegovy supply normalization and US obesity coverage expansion.',
+      next_catalyst: 'Q1 2026 Earnings â upcoming. Watch Wegovy supply normalization and US obesity coverage expansion.',
       notes: 'Nesh research in progress. Thesis pending completion. Conviction will be updated on Nesh log.',
       added_by: 'Mitra'
     },
@@ -233,7 +233,7 @@ const seedIfEmpty = async () => {
       sector: 'Artificial Intelligence',
       stage: 'Pre-IPO',
       status: 'Active Watch',
-      thesis: 'Safety-first LLM architecture with Constitutional AI creating differentiated enterprise positioning. Claude API gaining enterprise share against GPT-4 on reliability and context window. Amazon investment ($4B) provides compute and distribution. LLM price war primary risk — commoditization compresses margin before IPO.',
+      thesis: 'Safety-first LLM architecture with Constitutional AI creating differentiated enterprise positioning. Claude API gaining enterprise share against GPT-4 on reliability and context window. Amazon investment ($4B) provides compute and distribution. LLM price war primary risk â commoditization compresses margin before IPO.',
       conviction_level: 3,
       kill_switch: 'Claude API pricing falls below sustainable margin; Amazon acquires Anthropic outright (removes IPO optionality); GPT-5 closes safety/reliability gap eliminating differentiation premium.',
       next_catalyst: 'Series F/G funding round or IPO window 2026-2027. Watch: Claude enterprise adoption metrics, API pricing floor stability.',
@@ -249,7 +249,7 @@ const seedIfEmpty = async () => {
       thesis: 'Wafer-Scale Engine (WSE) architecture delivers 10x+ inference speed advantage over GPU clusters for large language model workloads. If AI inference becomes the dominant compute use case (vs. training), Cerebras is structurally advantaged. Q2 2026 IPO window makes this SFSI\'s highest-priority near-term pre-IPO opportunity. Key risk: NVIDIA dominance entrenched; customers unwilling to deviate from CUDA ecosystem.',
       conviction_level: 3,
       kill_switch: 'NVIDIA Blackwell architecture closes inference speed gap to <3x; major hyperscaler (AWS/Azure/GCP) declines Cerebras partnership; IPO delayed beyond Q4 2026 indicating demand softness.',
-      next_catalyst: 'Q2 2026 IPO window (estimated). S-1 filing will be the primary intelligence trigger — watch for revenue growth rate, customer concentration, and gross margin.',
+      next_catalyst: 'Q2 2026 IPO window (estimated). S-1 filing will be the primary intelligence trigger â watch for revenue growth rate, customer concentration, and gross margin.',
       notes: 'Pre-IPO target #3. Hardware Alpha play for 2026. IPO timing makes this the most time-sensitive intelligence build.',
       added_by: 'Mitra'
     }
@@ -301,7 +301,7 @@ const seedIfEmpty = async () => {
         [
           companyId,
           '2026-04-16',
-          'Buy — Tranche 1',
+          'Buy â Tranche 1',
           'Boss',
           'Boss',
           'Initiated position at $470. Robotic surgery monopoly thesis. Tranche-based entry strategy to average down if price pulls back.',
@@ -313,7 +313,7 @@ const seedIfEmpty = async () => {
   console.log('[Postgres] Seeded: ISRG (position + triggers + decision), NVO, OpenAI, Anthropic, Cerebras');
 };
 
-// ── Digital Twin Query Helper ─────────────────────────────────────────────────
+// ââ Digital Twin Query Helper âââââââââââââââââââââââââââââââââââââââââââââââââ
 const queryTwin = async (companyName) => {
   if (!pgReady) return null;
   try {
@@ -335,7 +335,7 @@ const queryTwin = async (companyName) => {
   } catch (e) { console.error('[Twin query error]', e.message); return null; }
 };
 
-// ── Command Queue ─────────────────────────────────────────────────────────────
+// ââ Command Queue âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const COMMAND_QUEUE_KEY   = 'mitra:pending_commands';
 const COMPLETED_OUTPUT_KEY = 'mitra:completed_outputs';
 
@@ -358,12 +358,12 @@ const queueCommand = async (commandText, source = 'voice') => {
     const cmd = { id: `cmd_${Date.now()}`, command: commandText.slice(0, 500), status: 'pending_go', source, created_at: new Date().toISOString() };
     await redisClient.rPush(COMMAND_QUEUE_KEY, JSON.stringify(cmd));
     await redisClient.lTrim(COMMAND_QUEUE_KEY, -20, -1);
-    await tgSend(`Mitra —\n\nCommand queued: "<b>${escapeHtml(commandText.slice(0, 200))}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`);
+    await tgSend(`Mitra â\n\nCommand queued: "<b>${escapeHtml(commandText.slice(0, 200))}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`);
     return cmd.id;
   } catch (e) { return null; }
 };
 
-// ── Telegram ──────────────────────────────────────────────────────────────────
+// ââ Telegram ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const TG_TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT_ID = process.env.SAVITRI_CHAT_ID || '-1003993831052';
 const TG_API     = `https://api.telegram.org/bot${TG_TOKEN}`;
@@ -427,19 +427,19 @@ const pollTelegram = async () => {
   } catch {}
 };
 
-// ── System Prompt ─────────────────────────────────────────────────────────────
+// ââ System Prompt âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
 Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Mitra" on the first line.
 
 THE TEAM:
-- Satish Sharma — Boss, CEO, final decision-maker. All permissions flow through him.
-- Julieta Sharma (Jing) — Madam Boss, CFO. Financial controls and reporting lead.
-- Pradnesh Sharma (Nesh) — The Brains, Investment Specialist. Research authority.
+- Satish Sharma â Boss, CEO, final decision-maker. All permissions flow through him.
+- Julieta Sharma (Jing) â Madam Boss, CFO. Financial controls and reporting lead.
+- Pradnesh Sharma (Nesh) â The Brains, Investment Specialist. Research authority.
 
-DIGITAL TWIN — v9.0 CAPABILITY:
-SFSI now has a live Postgres institutional memory — the Digital Twin. I CAN:
+DIGITAL TWIN â v9.0 CAPABILITY:
+SFSI now has a live Postgres institutional memory â the Digital Twin. I CAN:
 - Query company profiles (thesis, conviction, kill switch, next catalyst)
 - Retrieve SFSI positions (entry price, tranches, P&L)
 - Pull relationship records (founders, CEOs, analysts)
@@ -450,7 +450,7 @@ SFSI now has a live Postgres institutional memory — the Digital Twin. I CAN:
 Current companies in the Twin: ISRG (Position Open), Novo Nordisk (Active Watch), OpenAI (Pre-IPO), Anthropic (Pre-IPO), Cerebras Systems (Pre-IPO).
 
 NESH LOG COMMAND FORMAT:
-When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." — I parse and write directly to the Digital Twin, then return live market context.
+When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." â I parse and write directly to the Digital Twin, then return live market context.
 
 CORE PROTOCOLS:
 - NEVER take external action without Boss explicit GO.
@@ -473,7 +473,7 @@ const buildSystemPrompt = async () => {
   return `${MITRA_BASE_PROMPT}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// ââ Auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
 const requireKey = (req, res, next) => {
   if (!MITRA_SYNC_KEY) return next();
@@ -481,11 +481,11 @@ const requireKey = (req, res, next) => {
   next();
 };
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 // ROUTES
-// ══════════════════════════════════════════════════════════════════════════════
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
-// ── Health ────────────────────────────────────────────────────────────────────
+// ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/', async (req, res) => {
   const ctx = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
@@ -494,10 +494,10 @@ app.get('/', async (req, res) => {
   res.json({
     status:         'ok',
     version:        '9.0',
-    build:          'Digital Twin — Institutional Memory Engine',
+    build:          'Digital Twin â Institutional Memory Engine',
     memory: {
       conversation: redisReady ? 'Redis (active)' : 'disabled',
-      institutional: pgReady ? `Postgres (${companyCount} companies, ${positionCount} open positions)` : 'disabled — set DATABASE_URL'
+      institutional: pgReady ? `Postgres (${companyCount} companies, ${positionCount} open positions)` : 'disabled â set DATABASE_URL'
     },
     cowork_sync:    ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
     twin_companies: pgReady ? parseInt(companyCount) : 0,
@@ -512,12 +512,12 @@ app.get('/', async (req, res) => {
   });
 });
 
-// ── Digital Twin — WRITE Endpoints ───────────────────────────────────────────
+// ââ Digital Twin â WRITE Endpoints âââââââââââââââââââââââââââââââââââââââââââ
 
-// POST /log-thesis — Nesh's primary command
+// POST /log-thesis â Nesh's primary command
 // Body: { name, ticker, thesis, conviction_level, kill_switch, next_catalyst, notes }
 app.post('/log-thesis', requireKey, async (req, res) => {
-  if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready — check DATABASE_URL' });
+  if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready â check DATABASE_URL' });
   const { name, ticker, thesis, conviction_level, kill_switch, next_catalyst, notes, added_by = 'Nesh' } = req.body;
   if (!name || !thesis) return res.status(400).json({ error: 'name and thesis required' });
 
@@ -583,7 +583,7 @@ app.post('/log-thesis', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /log-company — create or update a full company profile
+// POST /log-company â create or update a full company profile
 app.post('/log-company', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   const { name, ticker, sector, stage, status, thesis, conviction_level, kill_switch, next_catalyst, notes, added_by = 'Mitra' } = req.body;
@@ -614,7 +614,7 @@ app.post('/log-company', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /log-position — Boss enters a trade
+// POST /log-position â Boss enters a trade
 app.post('/log-position', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   const { company_name, entry_date, entry_price, shares, tranche_plan, notes } = req.body;
@@ -637,7 +637,7 @@ app.post('/log-position', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /log-decision — governance entry
+// POST /log-decision â governance entry
 app.post('/log-decision', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   const { company_name, type, decided_by, approved_by, rationale, outcome } = req.body;
@@ -654,9 +654,9 @@ app.post('/log-decision', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Digital Twin — READ Endpoints ─────────────────────────────────────────────
+// ââ Digital Twin â READ Endpoints âââââââââââââââââââââââââââââââââââââââââââââ
 
-// GET /company/:name — full profile with live market data
+// GET /company/:name â full profile with live market data
 app.get('/company/:name', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   try {
@@ -694,7 +694,7 @@ app.get('/company/:name', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /portfolio — all open positions
+// GET /portfolio â all open positions
 app.get('/portfolio', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   try {
@@ -729,7 +729,7 @@ app.get('/portfolio', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /watchlist — active triggers
+// GET /watchlist â active triggers
 app.get('/watchlist', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   try {
@@ -745,7 +745,7 @@ app.get('/watchlist', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /twin/summary — overview of all companies in the twin
+// GET /twin/summary â overview of all companies in the twin
 app.get('/twin/summary', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Digital Twin not ready' });
   try {
@@ -757,7 +757,7 @@ app.get('/twin/summary', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Memory Context Endpoints ──────────────────────────────────────────────────
+// ââ Memory Context Endpoints ââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/memory/context', requireKey, async (req, res) => {
   const { context } = req.body;
   if (!context) return res.status(400).json({ error: 'context required' });
@@ -769,7 +769,7 @@ app.post('/memory/context', requireKey, async (req, res) => {
 app.get('/memory/context', requireKey, async (req, res) => {
   const context   = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
-  res.json({ hasContext: context.length > 0, chars: context.length, updatedAt: preview: context.slice(0, 300) });
+  res.json({ hasContext: context.length > 0, chars: context.length, updatedAt, preview: context.slice(0, 300) });
 });
 
 app.delete('/memory/context', requireKey, async (req, res) => {
@@ -777,7 +777,7 @@ app.delete('/memory/context', requireKey, async (req, res) => {
   res.json({ cleared: true, timestamp: new Date().toISOString() });
 });
 
-// ── Command Queue Endpoints ───────────────────────────────────────────────────
+// ââ Command Queue Endpoints âââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.get('/commands/pending', requireKey, async (req, res) => {
   if (!redisReady) return res.json({ commands: [] });
   try {
@@ -810,8 +810,8 @@ app.post('/commands/complete', requireKey, async (req, res) => {
     const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === commandId) { c.status = 'complete'; return JSON.stringify(c); } return e; });
     await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e);
     const existingCtx = await getGlobalContext();
-    await setGlobalContext((existingCtx + `\n\n[OUTPUT — ${result.completed_at}]\n${result.summary}`).slice(-8000));
-    await tgSend(`Mitra —\n\nExecution complete.\n\n${escapeHtml(result.summary)}\n\nCall Mitra for verbal brief.`);
+    await setGlobalContext((existingCtx + `\n\n[OUTPUT â ${result.completed_at}]\n${result.summary}`).slice(-8000));
+    await tgSend(`Mitra â\n\nExecution complete.\n\n${escapeHtml(result.summary)}\n\nCall Mitra for verbal brief.`);
     res.json({ saved: true, commandId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -826,7 +826,7 @@ app.delete('/commands/:id', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /ask ──────────────────────────────────────────────────────────────────────
+// ââ /ask ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/ask', async (req, res) => {
   const { question, chatId = 'ask-session' } = req.body;
   if (!question) return res.status(400).json({ error: 'question required' });
@@ -842,7 +842,7 @@ app.post('/ask', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /chat ─────────────────────────────────────────────────────────────────────
+// ââ /chat âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/chat', async (req, res) => {
   const { messages, chatId = 'chat-session' } = req.body;
   const last = messages?.[messages.length - 1]?.content || '';
@@ -859,7 +859,7 @@ app.post('/chat', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── /v1/chat/completions — Vapi voice ─────────────────────────────────────────
+// ââ /v1/chat/completions â Vapi voice âââââââââââââââââââââââââââââââââââââââââ
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { messages, stream } = req.body;
@@ -911,10 +911,10 @@ app.post('/v1/chat/completions', async (req, res) => {
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ââ Start âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v9.0 — Digital Twin | Institutional Memory Engine`);
+  console.log(`\nMitra Brain API v9.0 â Digital Twin | Institutional Memory Engine`);
   console.log(`SFSI Chief of Staff | savitrifsi.com`);
   console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
   await initRedis();
