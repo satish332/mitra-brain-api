@@ -3,6 +3,7 @@ import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from 'redis';
 import pg from 'pg';
+import { fetchDriveMemory } from './google_drive.js';
 
 const { Pool } = pg;
 const app = express();
@@ -512,7 +513,8 @@ SFSI now has a live Postgres institutional memory ------ the Savitri Portfolio D
 Current companies in the Twin: ISRG (Position Open), Novo Nordisk (Active Watch), OpenAI (Pre-IPO), Anthropic (Pre-IPO), Cerebras Systems (Pre-IPO).
 
 NESH LOG COMMAND FORMAT:
-When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then return live market context.
+When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then const driveMemory = await fetchDriveMemory();
+  return (driveMemory ? driveMemory + '\n\n' : '') + live market context.
 
 CORE PROTOCOLS:
 - NEVER take external action without Boss explicit GO.
@@ -592,7 +594,7 @@ const buildSystemPrompt = async () => {
 
   const base = MITRA_BASE_PROMPT + twinContext;
   if (!ctx) return base;
-  return `${base}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+  return driveMemory + `${base}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
