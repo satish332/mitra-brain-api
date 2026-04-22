@@ -625,9 +625,7 @@ const buildSystemPrompt = async () => {
 
   const base = MITRA_BASE_PROMPT + twinContext;
   if (!ctx) return base;
-  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n
-IMPORTANT: When you learn a new fact about SFSI, the team, or a client that should be remembered for future sessions, append [REMEMBER: <brief fact>] at the END of your response. This will be auto-captured.
-=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
