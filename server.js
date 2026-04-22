@@ -127,15 +127,15 @@ const createSchema = async () => {
       content     TEXT,
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     );
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS voice_learnings (
+
+    CREATE TABLE IF NOT EXISTS voice_learnings (
         id          SERIAL PRIMARY KEY,
         content     TEXT NOT NULL,
         source      VARCHAR(50) DEFAULT 'voice',
         created_at  TIMESTAMPTZ DEFAULT NOW(),
         applied     BOOLEAN DEFAULT false
       );
-    `);
+
 
     CREATE TABLE IF NOT EXISTS companies (
       id                SERIAL PRIMARY KEY,
