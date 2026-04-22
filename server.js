@@ -793,6 +793,18 @@ app.post('/v1/voice/learnings/apply', async (req, res) => {
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
+// ── /v1/smoke — permanent health check (build gate + Railway health check URL)
+app.get('/v1/smoke', async (req, res) => {
+  try {
+    await pool.query('SELECT 1 FROM voice_learnings LIMIT 1');
+    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    res.json({ status: 'ok', db: 'connected', anthropic: hasKey ? 'present' : 'MISSING', ts: new Date().toISOString() });
+  } catch(e) {
+    res.status(503).json({ status: 'error', error: e.message });
+  }
+});
+
+
 app.get('/memory/context', requireKey, async (req, res) => {
   const context   = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
@@ -953,16 +965,16 @@ app.post('/v1/chat/completions', async (req, res) => {
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
 });
 
-// Ã¢ÂÂÃ¢ÂÂ Start Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ Start ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ
 const PORT = process.env.PORT || 3000;
 
 
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v11.1 â Savitri Portfolio Database | Institutional Memory`);
+  console.log(`\nMitra Brain API v11.1 Ã¢ÂÂ Savitri Portfolio Database | Institutional Memory`);
   console.log(`SFSI Chief of Staff | savitrifsi.com`);
   console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
   await initRedis();
   await initPostgres();
-  // Telegram polling: LIVE â enabled 2026-04-21
-  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 â Global Mitra live on Telegram
+  // Telegram polling: LIVE Ã¢ÂÂ enabled 2026-04-21
+  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 Ã¢ÂÂ Global Mitra live on Telegram
 });
