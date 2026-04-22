@@ -868,7 +868,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
       const reply = r.content[0].text;
       await saveMessage(chatId, 'assistant', reply);
-      if (redisReady) appendToGlobalContext('VOICE: ' + (messages.filter(m => m.role === 'user').pop()?.content || '').slice(0, 120) + ' => ' + (reply || '').slice(0, 120)).catch(() => {});
+      if (redisReady) appendToGlobalContext('VOICE: ' + (lastUser || '').slice(0, 150) + ' => ' + (reply || '').slice(0, 150)).catch(() => {});
 
       res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }] });
     }
