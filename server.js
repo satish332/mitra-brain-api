@@ -513,8 +513,7 @@ SFSI now has a live Postgres institutional memory ------ the Savitri Portfolio D
 Current companies in the Twin: ISRG (Position Open), Novo Nordisk (Active Watch), OpenAI (Pre-IPO), Anthropic (Pre-IPO), Cerebras Systems (Pre-IPO).
 
 NESH LOG COMMAND FORMAT:
-When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then const driveMemory = await fetchDriveMemory();
-  return (driveMemory ? driveMemory + '\n\n' : '') + live market context.
+When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then  market context.
 
 CORE PROTOCOLS:
 - NEVER take external action without Boss explicit GO.
@@ -776,7 +775,9 @@ app.post('/ask', async (req, res) => {
   try {
     await saveMessage(chatId, 'user', question);
     const history = await getHistory(chatId, 14);
-    const system  = await buildSystemPrompt();
+    let _basePrompt = await buildSystemPrompt();
+    const _dm = await fetchDriveMemory();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
     const reply = r.content[0].text;
@@ -793,7 +794,9 @@ app.post('/chat', async (req, res) => {
   try {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
-    const system  = await buildSystemPrompt();
+    let _basePrompt = await buildSystemPrompt();
+    const _dm = await fetchDriveMemory();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
@@ -824,7 +827,9 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
-    const system    = await buildSystemPrompt();
+    let _basePrompt = await buildSystemPrompt();
+    const _dm = await fetchDriveMemory();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
