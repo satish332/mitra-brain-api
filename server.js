@@ -11,7 +11,7 @@ app.use(express.json());
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ââ FMP Market Data Helper ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ FMP Market Data Helper ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const FMP_KEY = process.env.FMP_API_KEY || '';
 const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
 
@@ -41,17 +41,17 @@ const fmpProfile = async (ticker) => {
   } catch { return null; }
 };
 
-// ââ Redis (Conversation Memory) âââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Redis (Conversation Memory) ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const redisClient = process.env.REDIS_URL ? createClient({ url: process.env.REDIS_URL }) : null;
 let redisReady = false;
 
 const initRedis = async () => {
-  if (!redisClient) { console.log('[Redis] No REDIS_URL â conversation memory disabled'); return; }
+  if (!redisClient) { console.log('[Redis] No REDIS_URL ------ conversation memory disabled'); return; }
   try {
     redisClient.on('error', (e) => console.error('[Redis]', e.message));
     await redisClient.connect();
     redisReady = true;
-    console.log('[Redis] Connected â conversation memory ACTIVE');
+    console.log('[Redis] Connected ------ conversation memory ACTIVE');
   } catch (e) { console.error('[Redis] Init error:', e.message); }
 };
 
@@ -71,7 +71,7 @@ const getHistory = async (chatId, limit = 14) => {
   } catch { return []; }
 };
 
-// ââ Global Context (Cowork <> Brain sync) ââââââââââââââââââââââââââââââââââ
+// ------------ Global Context (Cowork <> Brain sync) ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const GLOBAL_CONTEXT_KEY  = 'mitra:global_context';
 const CONTEXT_UPDATED_KEY = 'mitra:context_updated_at';
 
@@ -89,18 +89,18 @@ const setGlobalContext = async (context) => {
   } catch { return false; }
 };
 
-// ââ Postgres (Digital Twin â Institutional Memory) ââââââââââââââââââââââââââââ
+// ------------ Postgres (Digital Twin ------ Institutional Memory) ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
   : null;
 let pgReady = false;
 
 const initPostgres = async () => {
-  if (!pool) { console.log('[Postgres] No DATABASE_URL â Savitri Portfolio Database disabled'); return; }
+  if (!pool) { console.log('[Postgres] No DATABASE_URL ------ Savitri Portfolio Database disabled'); return; }
   try {
     await pool.query('SELECT 1');
     pgReady = true;
-    console.log('[Postgres] Connected â Savitri Portfolio Database ACTIVE');
+    console.log('[Postgres] Connected ------ Savitri Portfolio Database ACTIVE');
     await createSchema();
     await seedIfEmpty();
     await seedBrokerageData();
@@ -176,7 +176,7 @@ const createSchema = async () => {
     );
 
 
-    -- ── Savitri Portfolio Database — Accounting Layer ─────────────────────
+    -- ------ Savitri Portfolio Database --- Accounting Layer ---------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS accounts (
       account_id    TEXT PRIMARY KEY,
       account_name  TEXT NOT NULL,
@@ -234,16 +234,16 @@ const createSchema = async () => {
     CREATE INDEX IF NOT EXISTS idx_tax_lots_account ON tax_lots(account_id, acquisition_date);
     -- Seed Fidelity account if not exists
     INSERT INTO accounts (account_id, account_name, broker, account_type)
-    VALUES ('15237882', 'Savitri FSI — Fidelity Brokerage', 'Fidelity', 'Brokerage')
+    VALUES ('15237882', 'Savitri FSI --- Fidelity Brokerage', 'Fidelity', 'Brokerage')
     ON CONFLICT (account_id) DO NOTHING;  `);
-  console.log('[Postgres] Schema verified â 5 tables ready');
+  console.log('[Postgres] Schema verified ------ 5 tables ready');
 };
 
-// ââ Seed Data â Day 1 Digital Twin Records ââââââââââââââââââââââââââââââââââââ
+// ------------ Seed Data ------ Day 1 Digital Twin Records ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const seedIfEmpty = async () => {
   const { rows } = await pool.query('SELECT COUNT(*) FROM companies');
   if (parseInt(rows[0].count) > 0) {
-    console.log(`[Postgres] Savitri Portfolio Database has ${rows[0].count} companies â skipping seed`);
+    console.log(`[Postgres] Savitri Portfolio Database has ${rows[0].count} companies ------ skipping seed`);
     return;
   }
   console.log('[Postgres] Seeding Savitri Portfolio Database with 5 founding records...');
@@ -255,10 +255,10 @@ const seedIfEmpty = async () => {
       sector: 'Medical Devices',
       stage: 'Public',
       status: 'Position Open',
-      thesis: 'Structural monopoly on robotic-assisted surgery. The da Vinci system creates a razor-and-blade revenue model â hospitals locked in via training, consumables, and multi-year service contracts. Procedure volume growing 12-15% annually is the primary alpha driver. Global expansion (OUS procedures +20% YoY) provides a second growth engine independent of US hospital capex cycles.',
+      thesis: 'Structural monopoly on robotic-assisted surgery. The da Vinci system creates a razor-and-blade revenue model ------ hospitals locked in via training, consumables, and multi-year service contracts. Procedure volume growing 12-15% annually is the primary alpha driver. Global expansion (OUS procedures +20% YoY) provides a second growth engine independent of US hospital capex cycles.',
       conviction_level: 4,
       kill_switch: 'Competition narrows da Vinci gross margin below 60% for two consecutive quarters; FDA approves a competing system at comparable clinical capability at 30%+ lower cost; US procedure growth falls below 8% for two consecutive quarters; management guidance cut materially on FY26 revenue.',
-      next_catalyst: 'Q1 2026 Earnings â April 21, 2026. Consensus: EPS $2.08, Revenue $2.61B.',
+      next_catalyst: 'Q1 2026 Earnings ------ April 21, 2026. Consensus: EPS $2.08, Revenue $2.61B.',
       pre_earnings_note: 'Pre-earnings consensus (Mitra synthesis, Apr 20 2026): EPS $2.08, Revenue $2.61B. Key watch items: (1) OUS procedure growth rate vs Q4 2025 (+20%), (2) Ion bronchoscopy adoption cadence, (3) FY26 guidance raised/maintained/cut, (4) da Vinci 5 system placement acceleration. Bull case: Beat on revenue + raise guidance = hold and add tranche 2 at $450. Bear case: Miss + guidance cut = re-evaluate thesis, consider trim.',
       notes: 'Position initiated Apr 16 2026 at $470. Tranches 2 and 3 pending at $450 and $430 respectively.',
       added_by: 'Mitra'
@@ -269,10 +269,10 @@ const seedIfEmpty = async () => {
       sector: 'Pharmaceuticals',
       stage: 'Public',
       status: 'Active Watch',
-      thesis: 'GLP-1 market leader. Ozempic and Wegovy create durable revenue with strong IP protection through 2031. Global obesity epidemic provides multi-decade demand tailwind. Research in progress â Nesh developing full thesis.',
+      thesis: 'GLP-1 market leader. Ozempic and Wegovy create durable revenue with strong IP protection through 2031. Global obesity epidemic provides multi-decade demand tailwind. Research in progress ------ Nesh developing full thesis.',
       conviction_level: 3,
       kill_switch: 'Eli Lilly tirzepatide gains >40% market share in obesity indication; GLP-1 cardiovascular benefit claims challenged by FDA; reimbursement coverage materially restricted by major US payers.',
-      next_catalyst: 'Q1 2026 Earnings â upcoming. Watch Wegovy supply normalization and US obesity coverage expansion.',
+      next_catalyst: 'Q1 2026 Earnings ------ upcoming. Watch Wegovy supply normalization and US obesity coverage expansion.',
       notes: 'Nesh research in progress. Thesis pending completion. Conviction will be updated on Nesh log.',
       added_by: 'Mitra'
     },
@@ -295,7 +295,7 @@ const seedIfEmpty = async () => {
       sector: 'Artificial Intelligence',
       stage: 'Pre-IPO',
       status: 'Active Watch',
-      thesis: 'Safety-first LLM architecture with Constitutional AI creating differentiated enterprise positioning. Claude API gaining enterprise share against GPT-4 on reliability and context window. Amazon investment ($4B) provides compute and distribution. LLM price war primary risk â commoditization compresses margin before IPO.',
+      thesis: 'Safety-first LLM architecture with Constitutional AI creating differentiated enterprise positioning. Claude API gaining enterprise share against GPT-4 on reliability and context window. Amazon investment ($4B) provides compute and distribution. LLM price war primary risk ------ commoditization compresses margin before IPO.',
       conviction_level: 3,
       kill_switch: 'Claude API pricing falls below sustainable margin; Amazon acquires Anthropic outright (removes IPO optionality); GPT-5 closes safety/reliability gap eliminating differentiation premium.',
       next_catalyst: 'Series F/G funding round or IPO window 2026-2027. Watch: Claude enterprise adoption metrics, API pricing floor stability.',
@@ -311,7 +311,7 @@ const seedIfEmpty = async () => {
       thesis: 'Wafer-Scale Engine (WSE) architecture delivers 10x+ inference speed advantage over GPU clusters for large language model workloads. If AI inference becomes the dominant compute use case (vs. training), Cerebras is structurally advantaged. Q2 2026 IPO window makes this SFSI\'s highest-priority near-term pre-IPO opportunity. Key risk: NVIDIA dominance entrenched; customers unwilling to deviate from CUDA ecosystem.',
       conviction_level: 3,
       kill_switch: 'NVIDIA Blackwell architecture closes inference speed gap to <3x; major hyperscaler (AWS/Azure/GCP) declines Cerebras partnership; IPO delayed beyond Q4 2026 indicating demand softness.',
-      next_catalyst: 'Q2 2026 IPO window (estimated). S-1 filing will be the primary intelligence trigger â watch for revenue growth rate, customer concentration, and gross margin.',
+      next_catalyst: 'Q2 2026 IPO window (estimated). S-1 filing will be the primary intelligence trigger ------ watch for revenue growth rate, customer concentration, and gross margin.',
       notes: 'Pre-IPO target #3. Hardware Alpha play for 2026. IPO timing makes this the most time-sensitive intelligence build.',
       added_by: 'Mitra'
     }
@@ -363,7 +363,7 @@ const seedIfEmpty = async () => {
         [
           companyId,
           '2026-04-16',
-          'Buy â Tranche 1',
+          'Buy ------ Tranche 1',
           'Boss',
           'Boss',
           'Initiated position at $470. Robotic surgery monopoly thesis. Tranche-based entry strategy to average down if price pulls back.',
@@ -375,7 +375,7 @@ const seedIfEmpty = async () => {
   console.log('[Postgres] Seeded: ISRG (position + triggers + decision), NVO, OpenAI, Anthropic, Cerebras');
 };
 
-// ââ Digital Twin Query Helper âââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Digital Twin Query Helper ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const queryTwin = async (companyName) => {
   if (!pgReady) return null;
   try {
@@ -397,7 +397,7 @@ const queryTwin = async (companyName) => {
   } catch (e) { console.error('[Twin query error]', e.message); return null; }
 };
 
-// ââ Command Queue âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Command Queue ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const COMMAND_QUEUE_KEY   = 'mitra:pending_commands';
 const COMPLETED_OUTPUT_KEY = 'mitra:completed_outputs';
 
@@ -420,12 +420,12 @@ const queueCommand = async (commandText, source = 'voice') => {
     const cmd = { id: `cmd_${Date.now()}`, command: commandText.slice(0, 500), status: 'pending_go', source, created_at: new Date().toISOString() };
     await redisClient.rPush(COMMAND_QUEUE_KEY, JSON.stringify(cmd));
     await redisClient.lTrim(COMMAND_QUEUE_KEY, -20, -1);
-    await tgSend(`Mitra â\n\nCommand queued: "<b>${escapeHtml(commandText.slice(0, 200))}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`);
+    await tgSend(`Mitra ------\n\nCommand queued: "<b>${escapeHtml(commandText.slice(0, 200))}</b>"\n\nReply <b>GO</b> to execute or <b>STOP</b> to discard.`);
     return cmd.id;
   } catch (e) { return null; }
 };
 
-// ââ Telegram ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Telegram ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const TG_TOKEN   = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT_ID = process.env.SAVITRI_CHAT_ID || '-1003993831052';
 const TG_API     = `https://api.telegram.org/bot${TG_TOKEN}`;
@@ -489,19 +489,19 @@ const pollTelegram = async () => {
   } catch {}
 };
 
-// ââ System Prompt âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ System Prompt ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
 Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Mitra" on the first line.
 
 THE TEAM:
-- Satish Sharma â Boss, CEO, final decision-maker. All permissions flow through him.
-- Julieta Sharma (Jing) â Madam Boss, CFO. Financial controls and reporting lead.
-- Pradnesh Sharma (Nesh) â The Brains, Investment Specialist. Research authority.
+- Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
+- Julieta Sharma (Jing) ------ Madam Boss, CFO. Financial controls and reporting lead.
+- Pradnesh Sharma (Nesh) ------ The Brains, Investment Specialist. Research authority.
 
-SAVITRI PORTFOLIO DATABASE — v11.1 CAPABILITY:
-SFSI now has a live Postgres institutional memory â the Savitri Portfolio Database. I CAN:
+SAVITRI PORTFOLIO DATABASE --- v11.1 CAPABILITY:
+SFSI now has a live Postgres institutional memory ------ the Savitri Portfolio Database. I CAN:
 - Query company profiles (thesis, conviction, kill switch, next catalyst)
 - Retrieve SFSI positions (entry price, tranches, P&L)
 - Pull relationship records (founders, CEOs, analysts)
@@ -512,7 +512,7 @@ SFSI now has a live Postgres institutional memory â the Savitri Portfolio D
 Current companies in the Twin: ISRG (Position Open), Novo Nordisk (Active Watch), OpenAI (Pre-IPO), Anthropic (Pre-IPO), Cerebras Systems (Pre-IPO).
 
 NESH LOG COMMAND FORMAT:
-When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." â I parse and write directly to the Digital Twin, then return live market context.
+When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then return live market context.
 
 CORE PROTOCOLS:
 - NEVER take external action without Boss explicit GO.
@@ -532,7 +532,7 @@ Voice: Vapi +1 (949) 516-9654`;
 const buildSystemPrompt = async () => {
   const ctx = await getGlobalContext();
 
-  // ── Live Digital Twin context from Postgres ──────────────────────────────
+  // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
   let twinContext = '';
   if (pgReady) {
     try {
@@ -560,7 +560,7 @@ const buildSystemPrompt = async () => {
          FROM companies WHERE status NOT IN ('Position Open') ORDER BY conviction_level DESC LIMIT 20`
       );
 
-      twinContext = '\n\n--- DIGITAL TWIN — SFSI LIVE PORTFOLIO & WATCHLIST ---\n';
+      twinContext = '\n\n--- DIGITAL TWIN --- SFSI LIVE PORTFOLIO & WATCHLIST ---\n';
 
       if (positions.length > 0) {
         twinContext += `OPEN POSITIONS (${positions.length}):\n`;
@@ -571,7 +571,7 @@ const buildSystemPrompt = async () => {
           const thesis = p.thesis && !p.thesis.includes('Thesis Pending') ? ` | ${p.thesis.slice(0, 120)}` : '';
           const kill = p.kill_switch ? ` | Kill switch: ${p.kill_switch.slice(0, 80)}` : '';
           const catalyst = p.next_catalyst ? ` | Next catalyst: ${p.next_catalyst}` : '';
-          twinContext += `• ${p.name} (${p.ticker}) | ${p.sector || 'N/A'} | ${shares} ${cost} ${total} | Conviction: ${p.conviction_level || '?'}/5${thesis}${kill}${catalyst}\n`;
+          twinContext += `--- ${p.name} (${p.ticker}) | ${p.sector || 'N/A'} | ${shares} ${cost} ${total} | Conviction: ${p.conviction_level || '?'}/5${thesis}${kill}${catalyst}\n`;
         }
       }
 
@@ -580,7 +580,7 @@ const buildSystemPrompt = async () => {
         for (const c of watchlist) {
           const thesis = c.thesis && !c.thesis.includes('Thesis Pending') ? ` | ${c.thesis.slice(0, 100)}` : '';
           const kill = c.kill_switch ? ` | Kill: ${c.kill_switch.slice(0, 60)}` : '';
-          twinContext += `• ${c.name} (${c.ticker}) | ${c.sector} | Conviction: ${c.conviction_level}/5${thesis}${kill}\n`;
+          twinContext += `--- ${c.name} (${c.ticker}) | ${c.sector} | Conviction: ${c.conviction_level}/5${thesis}${kill}\n`;
         }
       }
 
@@ -595,7 +595,7 @@ const buildSystemPrompt = async () => {
   return `${base}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
-// ââ Auth ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
 const requireKey = (req, res, next) => {
   if (!MITRA_SYNC_KEY) return next();
@@ -603,11 +603,11 @@ const requireKey = (req, res, next) => {
   next();
 };
 
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // ROUTES
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// ââ Health ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+// ------------ Health ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 app.get('/', async (req, res) => {
   const ctx = await getGlobalContext();
   const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
@@ -619,7 +619,7 @@ app.get('/', async (req, res) => {
     build:          'Savitri Portfolio Database v11.1',
     memory: {
       conversation: redisReady ? 'Redis (active)' : 'disabled',
-      institutional: pgReady ? `Postgres (${companyCount} companies, ${positionCount} open positions)` : 'disabled â set DATABASE_URL'
+      institutional: pgReady ? `Postgres (${companyCount} companies, ${positionCount} open positions)` : 'disabled ------ set DATABASE_URL'
     },
     cowork_sync:    ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
     twin_companies: pgReady ? parseInt(companyCount) : 0,
@@ -637,9 +637,9 @@ app.get('/', async (req, res) => {
   });
 });
 
-// ─  Savitri Portfolio Database — GET Endpoints ──────────────────────────────
+// ------ Savitri Portfolio Database --- GET Endpoints ------------------------------------------------------------------------------------------
 
-// GET /v1/portfolio/:account_id — open lots with intelligence context
+// GET /v1/portfolio/:account_id --- open lots with intelligence context
 app.get('/v1/portfolio/:account_id', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
   const { account_id } = req.params;
@@ -676,7 +676,7 @@ app.get('/v1/portfolio/:account_id', requireKey, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /v1/transactions/:account_id — transaction history from lot_transactions
+// GET /v1/transactions/:account_id --- transaction history from lot_transactions
 app.get('/v1/transactions/:account_id', requireKey, async (req, res) => {
   if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
   const { account_id } = req.params;
@@ -698,182 +698,115 @@ app.get('/v1/transactions/:account_id', requireKey, async (req, res) => {
 });
 
 
-// ââ Memory Context Endpoints âââââââââââââââââââââââââââââââââââââââââââââââââââ
-app.post('/memory/context', requireKey, async (reK�\�HO��ۜ���۝^HH�\K���NY�
-X�۝^
-H�]\���\˜�]\�
-
-K���ۊ�\��܎�	��۝^�\]Z\�Y	�JNY�
-�۝^�[���
-H�]\���\˜�]\�
-
-K���ۊ�\��܎�	��۝^��\��H
-X^�\��I�JN�ۜ��]�YH]�Z]�]�ؘ[�۝^
-�۝^
-N�\˚��ۊ��]�Y�\�Έ�۝^�[��[Y\�[\��]�]J
-K��T����[��
-HJNJN�\��]
-	��Y[[ܞK��۝^	��\]Z\�R�^K\�[��
-�\K�\�HO��ۜ��۝^H]�Z]�]�ؘ[�۝^
+// ------------ Memory Context Endpoints -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/memory/context', requireKey, async (req, res) => {
+  const { context } = req.body;
+  if (!context) return res.status(400).json({ error: 'context required' });
+  if (context.length > 8000) return res.status(400).json({ error: 'context too large (max 8000 chars)' });
+  const saved = await setGlobalContext(context);
+  res.json({ saved, chars: context.length, timestamp: new Date().toISOString() });
+});
 
-N�ۜ�\]Y]H�Y\ԙXYH�]�Z]�Y\��Y[���]
-�ӕV�TUQ��VJH��[�\˚��ۊ�\��۝^��۝^�[����\�Έ�۝^�[��\]Y]�]�Y]Έ�۝^��X�J�
-HJNJN�\�[]J	��Y[[ܞK��۝^	��\]Z\�R�^K\�[��
-�\K�\�HO�]�Z]�]�ؘ[�۝^
-	��N�\˚��ۊ��X\�Y��YK[Y\�[\��]�]J
-K��T����[��
-HJNJN���0谥0�0谥0���[X[�]Y]YH[��[��0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0��\��]
-	����[X[���[�[����\]Z\�R�^K\�[��
-�\K�\�HO�Y�
-\�Y\ԙXYJH�]\���\˚��ۊ���[X[�Έ�HJN�H�ۜ�[��Y\�H]�Z]�Y\��Y[���[��J��SPS��UQUQW��VKLJN�ۜ���[X[��H[��Y\˛X\
-HO���Ӌ�\��JJJK��[\��O�˜�]\�OOH	�[�[������˜�]\�OOH	���ܙX�Z]�Y	�N�\˚��ۊ���[X[���[�[��Y\˛[��JNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN�\���
-	����[X[���X�ۛ��Y�I��\]Z\�R�^K\�[��
-�\K�\�HO��ۜ����[X[�YHH�\K���NY�
-X��[X[�Y\�Y\ԙXYJH�]\���\˜�]\�
-
-K���ۊ�\��܎�	���[X[�Y�\]Z\�Y	�JN�H�ۜ�[��Y\�H]�Z]�Y\��Y[���[��J��SPS��UQUQW��VKLJN]\]YH�[�N�ۜ��]�[��Y\�H[��Y\˛X\
-HO���ۜ��H��Ӌ�\��JJN�Y�
-˚YOOH��[X[�Y	��˜�]\�OOH	�[�[������H�˜�]\�H	���ܙX�Z]�Y	��\]YH�YN��]\����Ӌ���[��Y�J�N�H�]\��N�JNY�
-\]Y
-H�]�Z]�Y\��Y[��[
-��SPS��UQUQW��VJN��܈
-�ۜ�Hو�]�[��Y\�H]�Z]�Y\��Y[���\�
-��SPS��UQUQW��VKJN�B��\˚��ۊ�X�ۛ��Y�Y�\]Y��[X[�YJNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN�\���
-	����[X[�����\]I��\]Z\�R�^K\�[��
-�\K�\�HO��ۜ����[X[�Y�]]�[[X\�HHH�\K���NY�
-X��[X[�Y[�]]\�Y\ԙXYJH�]\���\˜�]\�
-
-K���ۊ�\��܎�	���[X[�Y[��]]�\]Z\�Y	�JN�H�ۜ��\�[H���[X[�Y�]]��]]��X�J
-K�[[X\�N�
-�[[X\�H�]]
-K��X�J
-L
-K��\]Y�]��]�]J
-K��T����[��
-HN]�Z]�Y\��Y[���\�
-��TUQ��UU��VK��Ӌ���[��Y�J�\�[
-JN]�Z]�Y\��Y[���[J��TUQ��UU��VKLLLJN�ۜ�[��Y\�H]�Z]�Y\��Y[���[��J��SPS��UQUQW��VKLJN�ۜ��]�[��Y\�H[��Y\˛X\
-HO���ۜ��H��Ӌ�\��JJN�Y�
-˚YOOH��[X[�Y
-H�˜�]\�H	���\]I���]\����Ӌ���[��Y�J�N�H�]\��N�JN]�Z]�Y\��Y[��[
-��SPS��UQUQW��VJN��܈
-�ۜ�Hو�]�[��Y\�H]�Z]�Y\��Y[���\�
-��SPS��UQUQW��VKJN�ۜ�^\�[���H]�Z]�]�ؘ[�۝^
+app.get('/memory/context', requireKey, async (req, res) => {
+  const context   = await getGlobalContext();
+  const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
+  res.json({ hasContext: context.length > 0, chars: context.length, updatedAt, preview: context.slice(0, 300) });
+});
 
-N]�Z]�]�ؘ[�۝^
+app.delete('/memory/context', requireKey, async (req, res) => {
+  await setGlobalContext('');
+  res.json({ cleared: true, timestamp: new Date().toISOString() });
+});
 
-^\�[���
-�����UU0谠0�	ܙ\�[���\]Y�]WW�ܙ\�[��[[X\�_X
-K��X�JN
-JN]�Z]��[�
-Z]�H0谠0���^X�][ۈ��\]K����\��\R[
-�\�[��[[X\�J_W���[Z]�H�܈�\��[��YY��
-N�\˚��ۊ��]�Y��YK��[X[�YJNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN�\�[]J	����[X[��ΚY	��\]Z\�R�^K\�[��
-�\K�\�HO�Y�
-\�Y\ԙXYJH�]\���\˜�]\�
-L�K���ۊ�\��܎�	ԙY\����XYI�JN�H�ۜ�[��Y\�H]�Z]�Y\��Y[���[��J��SPS��UQUQW��VKLJN�ۜ��]�[��Y\�H[��Y\˛X\
-HO���ۜ��H��Ӌ�\��JJN�Y�
-˚YOOH�\K�\�[\˚Y
-H�˜�]\�H	��[��[Y	���]\����Ӌ���[��Y�J�N�H�]\��N�JN]�Z]�Y\��Y[��[
-��SPS��UQUQW��VJN��܈
-�ۜ�Hو�]�[��Y\�H]�Z]�Y\��Y[���\�
-��SPS��UQUQW��VKJN�\˚��ۊ��[��[Y��YK��[X[�Y��\K�\�[\˚YJNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN���0谥0�0谥0��\��0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0��\���
-	��\���\�[��
-�\K�\�HO��ۜ��]Y\�[ۋ�]YH	�\��\�\��[ۉ�HH�\K���NY�
-\]Y\�[ۊH�]\���\˜�]\�
-
-K���ۊ�\��܎�	�]Y\�[ۈ�\]Z\�Y	�JN�H]�Z]�]�SY\��Y�J�]Y	�\�\��]Y\�[ۊN�ۜ�\�ܞHH]�Z]�]\�ܞJ�]YM
-N�ۜ��\�[HH]�Z]�Z[�\�[T��\
+// ------------ Command Queue Endpoints ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.get('/commands/pending', requireKey, async (req, res) => {
+  if (!redisReady) return res.json({ commands: [] });
+  try {
+    const entries  = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const commands = entries.map(e => JSON.parse(e)).filter(c => c.status === 'pending_go' || c.status === 'go_received');
+    res.json({ commands, total: entries.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-N�ۜ�Y\��Y�\�H\�ܞK�[����\�ܞK�X\
-O�
-���N����K�۝[����۝[�JJH�����N�	�\�\���۝[��]Y\�[ۈWN�ۜ��H]�Z][���X˛Y\��Y�\˘ܙX]J�[�[�	��]YK\�ۛ�]MM��X^���[�Έ��\�[KY\��Y�\�JN�ۜ��\HH���۝[��K�^]�Z]�]�SY\��Y�J�]Y	�\��\�[�	��\JN�\˚��ۊ�[���\���\K�]YJNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN���0谥0�0谥0���]0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0��\���
-	���]	�\�[��
-�\K�\�HO��ۜ��Y\��Y�\��]YH	��]\�\��[ۉ�HH�\K���N�ۜ�\�HY\��Y�\�˖�Y\��Y�\˛[��HWO˘�۝[�	��Y�
-[\�
-H�]\���\˜�]\�
-
-K���ۊ�\��܎�	ۛ�Y\��Y�H�۝[�	�JN�H]�Z]�]�SY\��Y�J�]Y	�\�\��\�
-N�ۜ�\�ܞHH]�Z]�]\�ܞJ�]YM
-N�ۜ��\�[HH]�Z]�Z[�\�[T��\
+app.post('/commands/acknowledge', requireKey, async (req, res) => {
+  const { commandId } = req.body;
+  if (!commandId || !redisReady) return res.status(400).json({ error: 'commandId required' });
+  try {
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    let updated      = false;
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === commandId && c.status === 'pending_go') { c.status = 'go_received'; updated = true; return JSON.stringify(c); } return e; });
+    if (updated) { await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e); }
+    res.json({ acknowledged: updated, commandId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-N�ۜ�\���H\�ܞK�[����\�ܞK�X\
-O�
-���N����K�۝[����۝[�JJH�����N�	�\�\���۝[��\�WN�ۜ��H]�Z][���X˛Y\��Y�\˘ܙX]J�[�[�	��]YK\�ۛ�]MM��X^���[�ΈML�\�[KY\��Y�\Έ\���JN�ۜ��\HH���۝[��K�^]�Z]�]�SY\��Y�J�]Y	�\��\�[�	��\JN�\˚��ۊ��\�ۜ�N��\K�]YJNH�]�
-JH��\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN���0谥0�0谥0�݌K��]���\][ۜ�0谠0��\H��X�H0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0��\���
-	�݌K��]���\][ۜ��\�[��
-�\K�\�HO��H�ۜ��Y\��Y�\���X[HHH�\K���N�ۜ��]YH	؛���]��X�K]����ۜ�\���HY\��Y�\˙�[\�HO�K���HOOH	��\�[I�K�X\
-HO�
-��N�K���HOOH	�\��\�[�	��	�\��\�[�	��	�\�\����۝[��\[وK��۝[�OOH	���[����K��۝[��K��۝[�˖�O˝^	�JJNY�
-[\��˛[��
-H\��˜\�
-���N�	�\�\���۝[��	�[��JN��ۜ�\�\�\�Hˋ��\���K��]�\��J
-K��[�
-HO�K���HOOH	�\�\��NY�
-\�\�\�H]�Z]�]�SY\��Y�J�]Y	�\�\��\�\�\���۝[�
-N�]��[X[�]Y]YYH�[�NY�
-\�\�\�	��\�X�[۔�\]Y\�
-\�\�\���۝[�
-JH�ۜ��YYH]�Z]]Y]YP��[X[�
-\�\�\���۝[�	ݛ�X�I�NY�
-�YY
-H��[X[�]Y]YYH�YNB���ۜ�\�ܞHH]�Z]�]\�ܞJ�]YM
-N�ۜ��[�[\���H\�ܞK�[���H�\�ܞK�X\
-O�
-���N����K�۝[����۝[�JJH�\����ۜ��\�[HH]�Z]�Z[�\�[T��\
+app.post('/commands/complete', requireKey, async (req, res) => {
+  const { commandId, output, summary } = req.body;
+  if (!commandId || !output || !redisReady) return res.status(400).json({ error: 'commandId and output required' });
+  try {
+    const result = { commandId, output: output.slice(0, 8000), summary: (summary || output).slice(0, 500), completed_at: new Date().toISOString() };
+    await redisClient.rPush(COMPLETED_OUTPUT_KEY, JSON.stringify(result));
+    await redisClient.lTrim(COMPLETED_OUTPUT_KEY, -10, -1);
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === commandId) { c.status = 'complete'; return JSON.stringify(c); } return e; });
+    await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e);
+    const existingCtx = await getGlobalContext();
+    await setGlobalContext((existingCtx + `\n\n[OUTPUT ------ ${result.completed_at}]\n${result.summary}`).slice(-8000));
+    await tgSend(`Mitra ------\n\nExecution complete.\n\n${escapeHtml(result.summary)}\n\nCall Mitra for verbal brief.`);
+    res.json({ saved: true, commandId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-N�Y�
-��X[JH�\˜�]XY\�	��۝[�U\I�	�^�]�[�\��X[I�N�\˜�]XY\�	��X�KP�۝��	�	ۛ�X�X�I�N�\˜�]XY\�	��ۛ�X�[ۉ�	��Y\X[]�I�N�ۜ�܈H]�Z][���X˛Y\��Y�\˘ܙX]J�[�[�	��]YK\�ۛ�]MM��X^���[�ΈML�\�[KY\��Y�\Έ�[�[\�����X[N��YHJN�ۜ�YH�]�\I�]K����
-_X]�[�\HH	���܈]�Z]
-�ۜ�]�و܊HY�
-]��\HOOH	��۝[�؛����[I�	��]��[O˝\HOOH	�^�[I�H�[�\H
-�H]��[K�^�\˝ܚ]J]N�	Ҕ�Ӌ���[��Y�J�Yؚ�X��	��]���\][ۋ��[���ܙX]Y�X]���܊]K����
-K�L
-K[�[�	�Z]�KX��Z[�]�I���X�\Έ��[�^�[N����N�	�\��\�[�	��۝[��]��[K�^K�[�\�ܙX\�ێ��[WHJ_W��
-NB�Y�
-]��\HOOH	�Y\��Y�W���	�H]�Z]�]�SY\��Y�J�]Y	�\��\�[�	��[�\JN�\˝ܚ]J]N�	Ҕ�Ӌ���[��Y�J�Yؚ�X��	��]���\][ۋ��[���ܙX]Y�X]���܊]K����
-K�L
-K[�[�	�Z]�KX��Z[�]�I���X�\Έ��[�^�[N��K�[�\�ܙX\�ێ�	���	�WHJ_W��
-N�\˝ܚ]J	�]N��ӑWW���N�\˙[�
+app.delete('/commands/:id', requireKey, async (req, res) => {
+  if (!redisReady) return res.status(503).json({ error: 'Redis not ready' });
+  try {
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === req.params.id) { c.status = 'cancelled'; return JSON.stringify(c); } return e; });
+    await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e);
+    res.json({ cancelled: true, commandId: req.params.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-NB�B�H[�H�ۜ��H]�Z][���X˛Y\��Y�\˘ܙX]J�[�[�	��]YK\�ۛ�]MM��X^���[�ΈML�\�[KY\��Y�\Έ�[�[\���JN�ۜ��\HH���۝[��K�^]�Z]�]�SY\��Y�J�]Y	�\��\�[�	��\JN�\˚��ۊ�Y��]�\I�]K����
-_Xؚ�X��	��]���\][ۉ�ܙX]Y�X]���܊]K����
-K�L
-K[�[�	�Z]�KX��Z[�]�I���X�\Έ��[�^�Y\��Y�N����N�	�\��\�[�	��۝[���\HK�[�\�ܙX\�ێ�	���	�WHJNB�H�]�
-JH�Y�
-\�\˚XY\���[�
-H�\˜�]\�
-L
-K���ۊ�\��܎�K�Y\��Y�HJN�B�JN���0谥0�0谥0��\�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0�0谥0���ۜ�ԕH���\�˙[���ԕ���\�\�[�ԕ\�[��
+// ------------ /ask ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/ask', async (req, res) => {
+  const { question, chatId = 'ask-session' } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    await saveMessage(chatId, 'user', question);
+    const history = await getHistory(chatId, 14);
+    const system  = await buildSystemPrompt();
+    const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
+    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
+    const reply = r.content[0].text;
+    await saveMessage(chatId, 'assistant', reply);
+    res.json({ answer: reply, chatId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
-HO��ۜ��K����Z]�H��Z[�TH�LK�H8�%�]�]�Hܝ��[�]X�\�H[��]][ۘ[Y[[ܞX
-N�ۜ��K���є�H�YY�و�Y���]�]�Y��K���X
-N�ۜ��K���ܝ�	�ԕH	ۙ]�]J
-K��T����[��
-_W�
-N]�Z][�]�Y\�
-N]�Z][�]��ܙ\�
-N��[Yܘ[H�[�ΈU�H8�%[�X�Y���L
-L�B�Y�
-����S�H��[Yܘ[J
-N��][�\��[
-�[Yܘ[K�
-N�H��[�X�Y���L
-L�H8�%�ؘ[Z]�H]�Hۈ[Yܘ[B�JN�
+// ------------ /chat ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/chat', async (req, res) => {
+  const { messages, chatId = 'chat-session' } = req.body;
+  const last = messages?.[messages.length - 1]?.content || '';
+  if (!last) return res.status(400).json({ error: 'no message content' });
+  try {
+    await saveMessage(chatId, 'user', last);
+    const history = await getHistory(chatId, 14);
+    const system  = await buildSystemPrompt();
+    const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
+    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
+    const reply = r.content[0].text;
+    await saveMessage(chatId, 'assistant', reply);
+    res.json({ response: reply, chatId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ------------ /v1/chat/completions ------ Vapi voice -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/v1/chat/completions', async (req, res) => {
+  try {
+    const { messages, stream } = req.body;
+    const chatId = 'boss-voice-v2';
+    const msgs = messages.filter(m => m.role !== 'system').map(m => ({
+      role:    m.role === 'assistant' ? 'assistant' : 'user',
+      content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
+    }));
+    if (!msgs.ÆVæwF×6w2çW6²&öÆS¢wW6W"rÂ6öçFVçC¢tVÆÆòrÒ° ¢6öç7BÆ7EW6W"Ò²ââæ×6w5Òç&WfW'6RæfæBÒÓâÒç&öÆRÓÓÒwW6W"r°¢bÆ7EW6W"vB6fTÖW76vR6DBÂwW6W"rÂÆ7EW6W"æ6öçFVçB° ¢ÆWB6öÖÖæEVWVVBÒfÇ6S°¢bÆ7EW6W"bb47Föå&WVW7BÆ7EW6W"æ6öçFVçB°¢6öç7B6ÖDBÒvBVWVT6öÖÖæBÆ7EW6W"æ6öçFVçBÂwfö6Rr°¢b6ÖDB6öÖÖæEVWVVBÒG'VS°¢Ð ¢6öç7B7F÷'ÒvBvWD7F÷'6DBÂB°¢6öç7BfæÄ×6w2Ò7F÷'æÆVæwFâò7F÷'æÖÓâ²&öÆS¢ç&öÆRÂ6öçFVçC¢æ6öçFVçBÒ¢×6w3°¢6öç7B77FVÒÒvB'VÆE77FVÕ&ö×B° ¢b7G&VÒ°¢&W2ç6WDVFW"t6öçFVçBÕGRrÂwFWBöWfVçB×7G&VÒr°¢&W2ç6WDVFW"t66RÔ6öçG&öÂrÂvæòÖ66Rr°¢&W2ç6WDVFW"t6öææV7FöârÂv¶VWÖÆfRr°¢6öç7B7"ÒvBçF&÷2æÖW76vW2æ7&VFR²ÖöFVÃ¢v6ÆVFR×6öææWBÓBÓbrÂÖ÷Fö¶Vç3¢SÂ77FVÒÂÖW76vW3¢fæÄ×6w2Â7G&VÓ¢G'VRÒ°¢6öç7BBÒ6F6×ÂÒG´FFRææ÷rÖ°¢ÆWBgVÆÅ&WÇÒrs°¢f÷"vB6öç7BWböb7"°¢bWbçGRÓÓÒv6öçFVçEö&Æö6µöFVÇFrbbWbæFVÇFòçGRÓÓÒwFWEöFVÇFr°¢gVÆÅ&WÇ³ÒWbæFVÇFçFWC°¢&W2çw&FRFF¢G´¥4ôâç7G&ævg²BÂö&¦V7C¢v6Bæ6ö×ÆWFöâæ6Væ²rÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂFVÇF¢²&öÆS¢v767FçBrÂ6öçFVçC¢WbæFVÇFçFWBÒÂfæ6÷&V6öã¢çVÆÂÕÒÒÕÆåÆæ°¢Ð¢bWbçGRÓÓÒvÖW76vU÷7F÷r°¢vB6fTÖW76vR6DBÂv767FçBrÂgVÆÅ&WÇ°¢&W2çw&FRFF¢G´¥4ôâç7G&ævg²BÂö&¦V7C¢v6Bæ6ö×ÆWFöâæ6Væ²rÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂFVÇF¢·ÒÂfæ6÷&V6öã¢w7F÷rÕÒÒÕÆåÆæ°¢&W2çw&FRvFF¢´DôäUÕÆåÆâr°¢&W2æVæB°¢Ð¢Ð¢ÒVÇ6R°¢6öç7B"ÒvBçF&÷2æÖW76vW2æ7&VFR²ÖöFVÃ¢v6ÆVFR×6öææWBÓBÓbrÂÖ÷Fö¶Vç3¢SÂ77FVÒÂÖW76vW3¢fæÄ×6w2Ò°¢6öç7B&WÇÒ"æ6öçFVçE³ÒçFWC°¢vB6fTÖW76vR6DBÂv767FçBrÂ&WÇ°¢&W2æ§6öâ²C¢6F6×ÂÒG´FFRææ÷rÖÂö&¦V7C¢v6Bæ6ö×ÆWFöârÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂÖW76vS¢²&öÆS¢v767FçBrÂ6öçFVçC¢&WÇÒÂfæ6÷&V6öã¢w7F÷rÕÒÒ°¢Ð¢Ò6F6R²b&W2æVFW'56VçB&W2ç7FGW2Sæ§6öâ²W'&÷#¢RæÖW76vRÒ²Ð§Ò° ¢òòÒÒÒÒÒÒÒÒÒÒÒÒ7F'BÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÐ¦6öç7Bõ%BÒ&ö6W72æVçbåõ%BÇÂ3°  ¦æÆ7FVâõ%BÂ7æ2Óâ°¢6öç6öÆRæÆörÆäÖG&'&âcãÒÒÒ6fG&÷'FföÆòFF&6RÂç7FGWFöæÂÖVÖ÷'°¢6öç6öÆRæÆör4e46Vböb7FfbÂ6fG&g6æ6öÖ°¢6öç6öÆRæÆör÷'C¢Gµõ%GÒÂG¶æWrFFRçFô4õ7G&ærÕÆæ°¢vBæE&VF2°¢vBæE÷7Fw&W2°¢òòFVÆVw&ÒöÆÆæs¢ÄdRÒÒÒVæ&ÆVB##bÓBÓ#¢bDuõDô´Tâ²öÆÅFVÆVw&Ò²6WDçFW'fÂöÆÅFVÆVw&ÒÂ3²ÒòòVæ&ÆVB##bÓBÓ#ÒÒÒvÆö&ÂÖG&ÆfRöâFVÆVw&Ð§Ò°
