@@ -1,4 +1,4 @@
-const https = require('https');
+import https from 'https';
 
 const DRIVE_FILE_IDS = {
   'MEMORY.md':      '1U1UAoKxTMu6IIN9dp8WNKth1tc4J4Nmh',
@@ -42,4 +42,4 @@ async function fetchDriveMemory() {
   }
 }
 
-module.exports = { fetchDriveMemory };
+export { fetchDriveMemory };
