@@ -89,6 +89,18 @@ const setGlobalContext = async (context) => {
     return true;
   } catch { return false; }
 };
+const appendToGlobalContext = async (entry) => {
+  try {
+    if (!redisReady) return;
+    const cur = await redisClient.get(GLOBAL_CONTEXT_KEY) || '';
+    const ts = new Date().toISOString().slice(0, 16);
+    const appended = cur + '\n[GLOBAL ' + ts + '] ' + entry;
+    const trimmed = appended.length > 7400 ? appended.slice(-7400) : appended;
+    await redisClient.set(GLOBAL_CONTEXT_KEY, trimmed);
+    await redisClient.set(CONTEXT_UPDATED_KEY, new Date().toISOString());
+  } catch (e) { console.error('appendToGlobalContext:', e.message); }
+};
+
 
 // ------------ Postgres (Digital Twin ------ Institutional Memory) ------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const pool = process.env.DATABASE_URL
@@ -856,6 +868,8 @@ app.post('/v1/chat/completions', async (req, res) => {
       const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
       const reply = r.content[0].text;
       await saveMessage(chatId, 'assistant', reply);
+      if (redisReady) appendToGlobalContext('VOICE: ' + (messages.filter(m => m.role === 'user').pop()?.content || '').slice(0, 120) + ' => ' + (reply || '').slice(0, 120)).catch(() => {});
+
       res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }] });
     }
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
