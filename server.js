@@ -122,6 +122,11 @@ const initPostgres = async () => {
 
 const createSchema = async () => {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS memory (
+      file_name   TEXT PRIMARY KEY,
+      content     TEXT,
+      updated_at  TIMESTAMPTZ DEFAULT NOW()
+    );
     CREATE TABLE IF NOT EXISTS companies (
       id                SERIAL PRIMARY KEY,
       name              TEXT NOT NULL,
@@ -551,6 +556,8 @@ const buildSystemPrompt = async () => {
   let twinContext = '';
   if (pgReady) {
     try {
+      const memRows = await pool.query('SELECT file_name, content FROM memory ORDER BY updated_at DESC').catch(()=>({rows:[]}));
+      const memorySection = memRows.rows.length > 0 ? memRows.rows.map(r => r.content).join('\n\n---\n\n').slice(0, 9000) : '';
       const { rows: positions } = await pool.query(
         `SELECT agg.ticker,
                 COALESCE(c.name, agg.ticker) AS name,
@@ -607,7 +614,7 @@ const buildSystemPrompt = async () => {
 
   const base = MITRA_BASE_PROMPT + twinContext;
   if (!ctx) return base;
-  return `${base}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -720,6 +727,28 @@ app.post('/memory/context', requireKey, async (req, res) => {
   if (context.length > 8000) return res.status(400).json({ error: 'context too large (max 8000 chars)' });
   const saved = await setGlobalContext(context);
   res.json({ saved, chars: context.length, timestamp: new Date().toISOString() });
+});
+
+// --- Postgres Memory Sync Endpoint ---
+app.post('/v1/sync/memory', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { files } = req.body;
+  if (!Array.isArray(files) || files.length === 0) return res.status(400).json({error:'files array required'});
+  try {
+    let synced = 0;
+    for (const f of files) {
+      if (!f.file_name || !f.content) continue;
+      await pool.query(
+        'INSERT INTO memory (file_name, content, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (file_name) DO UPDATE SET content=$2, updated_at=NOW()',
+        [f.file_name, f.content]
+      );
+      synced++;
+    }
+    res.json({status:'ok', synced, timestamp: new Date().toISOString()});
+  } catch(e) {
+    res.status(500).json({error: e.message});
+  }
 });
 
 app.get('/memory/context', requireKey, async (req, res) => {
