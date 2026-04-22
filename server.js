@@ -127,6 +127,16 @@ const createSchema = async () => {
       content     TEXT,
       updated_at  TIMESTAMPTZ DEFAULT NOW()
     );
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS voice_learnings (
+        id          SERIAL PRIMARY KEY,
+        content     TEXT NOT NULL,
+        source      VARCHAR(50) DEFAULT 'voice',
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        applied     BOOLEAN DEFAULT false
+      );
+    `);
+
     CREATE TABLE IF NOT EXISTS companies (
       id                SERIAL PRIMARY KEY,
       name              TEXT NOT NULL,
@@ -615,7 +625,9 @@ const buildSystemPrompt = async () => {
 
   const base = MITRA_BASE_PROMPT + twinContext;
   if (!ctx) return base;
-  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n
+IMPORTANT: When you learn a new fact about SFSI, the team, or a client that should be remembered for future sessions, append [REMEMBER: <brief fact>] at the END of your response. This will be auto-captured.
+=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -750,6 +762,37 @@ app.post('/v1/sync/memory', async (req, res) => {
   } catch(e) {
     res.status(500).json({error: e.message});
   }
+});
+
+app.post('/v1/voice/learning', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { content, source } = req.body;
+  if (!content) return res.status(400).json({error:'content required'});
+  try {
+    await pool.query('INSERT INTO voice_learnings (content, source) VALUES ($1, $2)', [content, source || 'voice']);
+    res.json({status:'ok', message:'learning saved'});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+app.get('/v1/voice/learnings/pending', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  try {
+    const result = await pool.query('SELECT id, content, source, created_at FROM voice_learnings WHERE applied = false ORDER BY created_at ASC');
+    res.json({status:'ok', count: result.rows.length, learnings: result.rows});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+app.post('/v1/voice/learnings/apply', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({error:'ids array required'});
+  try {
+    await pool.query('UPDATE voice_learnings SET applied = true WHERE id = ANY($1)', [ids]);
+    res.json({status:'ok', applied: ids.length});
+  } catch(e) { res.status(500).json({error: e.message}); }
 });
 
 app.get('/memory/context', requireKey, async (req, res) => {
@@ -897,10 +940,17 @@ app.post('/v1/chat/completions', async (req, res) => {
     } else {
       const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
       const reply = r.content[0].text;
+      // [BIDIR] Strip [REMEMBER:...] markers, save to voice_learnings
+      const _remMatches = reply.match(/\[REMEMBER:\s*([^\]]+)\]/g) || [];
+      for (const _m of _remMatches) {
+        const _fact = _m.replace(/^\[REMEMBER:\s*/,'').replace(/\]$/,'').trim();
+        pool.query('INSERT INTO voice_learnings (content, source) VALUES ($1, $2)', [_fact, 'voice-auto']).catch(()=>{});
+      }
+      const cleanReply = reply.replace(/\s*\[REMEMBER:[^\]]+\]/g, '').trim();
       await saveMessage(chatId, 'assistant', reply);
-      if (redisReady) appendToGlobalContext('VOICE: ' + (lastUser || '').slice(0, 150) + ' => ' + (reply || '').slice(0, 150)).catch(() => {});
+      if (redisReady) appendToGlobalContext('VOICE: ' + (lastUser && lastUser.content ? lastUser.content : '').slice(0, 150) + ' => ' + (reply || '').slice(0, 150)).catch(() => {});
 
-      res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }] });
+      res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: cleanReply }, finish_reason: 'stop' }] });
     }
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
 });
