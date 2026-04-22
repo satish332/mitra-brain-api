@@ -1096,6 +1096,47 @@ app.post('/v1/chat/completions', async (req, res) => {
 
 // ââ Start âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 const PORT = process.env.PORT || 3000;
+
+// ─── SEED LOTS — Truthifi one-time data load ─────────────────────────────
+app.post('/v1/admin/seed-lots', requireKey, async (req, res) => {
+  if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
+  const { lots } = req.body;
+  if (!Array.isArray(lots) || lots.length === 0) return res.status(400).json({ error: 'lots array required' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let inserted = 0, skipped = 0;
+    for (const lot of lots) {
+      const { symbol, acquisition_date, quantity, cost_basis_per_share, account_id, lot_method } = lot;
+      const secRes = await client.query(
+        `INSERT INTO securities (ticker, instrument_type) VALUES ($1, 'EQUITY')
+         ON CONFLICT (ticker) DO UPDATE SET ticker = EXCLUDED.ticker
+         RETURNING sid`,
+        [symbol.toUpperCase()]
+      );
+      const sid = secRes.rows[0].sid;
+      const dup = await client.query(
+        `SELECT lot_id FROM tax_lots WHERE sid=$1 AND account_id=$2 AND acquisition_date=$3 AND ABS(cost_basis_per_share - $4) < 0.001`,
+        [sid, account_id, acquisition_date, cost_basis_per_share]
+      );
+      if (dup.rows.length > 0) { skipped++; continue; }
+      await client.query(
+        `INSERT INTO tax_lots (sid, account_id, acquisition_date, quantity, remaining_quantity, cost_basis_per_share, is_open, lot_method)
+         VALUES ($1,$2,$3,$4,$4,$5,true,$6)`,
+        [sid, account_id, acquisition_date, quantity, cost_basis_per_share, lot_method || 'SPEC_ID']
+      );
+      inserted++;
+    }
+    await client.query('COMMIT');
+    res.json({ success: true, inserted, skipped, total: lots.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
 app.listen(PORT, async () => {
   console.log(`\nMitra Brain API v10.0 â Digital Twin | Institutional Memory Engine`);
   console.log(`SFSI Chief of Staff | savitrifsi.com`);
