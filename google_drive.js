@@ -1,9 +1,7 @@
 import https from 'https';
 
 const DRIVE_FILE_IDS = {
-  'MEMORY.md':      '1U1UAoKxTMu6IIN9dp8WNKth1tc4J4Nmh',
-  'IN_PROGRESS.md': '1sakp2bRmmWW-WnKBU5nZDV3PvyEkWnMO',
-  'DECISIONS.md':   '1o-2OdmjWm8j3sg_RFQI-Ohc8kbowdYXU'
+  'MITRA_BRIEFING.md': '13D5kiqHEHHDNHbWEs3BIpu3787iyjeGM'
 };
 
 function httpsGet(url) {
