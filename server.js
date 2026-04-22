@@ -461,7 +461,9 @@ const processMessage = async (text, messageId, chatId) => {
   if (ACK_PATTERNS.test(trimmed)) return;
   try {
     const history = await getHistory(chatId, 14);
-    const systemPrompt = await buildSystemPrompt();
+    let _basePrompt = await buildSystemPrompt();
+    const _dm = await fetchDriveMemory();
+    const systemPrompt = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: trimmed }];
     const last = messages[messages.length - 1];
     if (last.role === 'user') last.content = last.content.replace(/@mitra\b/gi, '').replace(/^mitra[,:\s]*/i, '').trim() || last.content;
