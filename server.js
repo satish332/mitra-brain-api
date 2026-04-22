@@ -174,7 +174,68 @@ const createSchema = async () => {
       is_active         BOOLEAN DEFAULT TRUE,
       created_at        TIMESTAMPTZ DEFAULT NOW()
     );
-  `);
+
+
+    -- ── Savitri Portfolio Database — Accounting Layer ─────────────────────
+    CREATE TABLE IF NOT EXISTS accounts (
+      account_id    TEXT PRIMARY KEY,
+      account_name  TEXT NOT NULL,
+      broker        TEXT DEFAULT 'Fidelity',
+      account_type  TEXT DEFAULT 'Brokerage',
+      owner         TEXT DEFAULT 'Satish Sharma',
+      created_at    TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS securities (
+      sid              SERIAL PRIMARY KEY,
+      ticker           TEXT NOT NULL UNIQUE,
+      company_id       INTEGER REFERENCES companies(id),
+      instrument_type  TEXT DEFAULT 'EQUITY',
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS security_ticker_history (
+      id             SERIAL PRIMARY KEY,
+      sid            INTEGER REFERENCES securities(sid),
+      ticker         TEXT NOT NULL,
+      effective_from DATE NOT NULL,
+      effective_to   DATE,
+      created_at     TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS tax_lots (
+      lot_id              SERIAL PRIMARY KEY,
+      sid                 INTEGER REFERENCES securities(sid),
+      account_id          TEXT REFERENCES accounts(account_id),
+      acquisition_date    DATE NOT NULL,
+      quantity            NUMERIC(18,6) NOT NULL,
+      remaining_quantity  NUMERIC(18,6) NOT NULL,
+      cost_basis_per_share NUMERIC(18,6) NOT NULL,
+      is_open             BOOLEAN DEFAULT TRUE,
+      lot_method          TEXT DEFAULT 'SPEC_ID',
+      notes               TEXT,
+      created_at          TIMESTAMPTZ DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS lot_transactions (
+      id               SERIAL PRIMARY KEY,
+      lot_id           INTEGER REFERENCES tax_lots(lot_id),
+      transaction_type TEXT NOT NULL,
+      quantity         NUMERIC(18,6) NOT NULL,
+      price_per_share  NUMERIC(18,6),
+      total_amount     NUMERIC(18,2),
+      transaction_date DATE NOT NULL,
+      notes            TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tax_lots_open    ON tax_lots(sid, account_id) WHERE is_open = TRUE;
+    CREATE INDEX IF NOT EXISTS idx_tax_lots_account ON tax_lots(account_id, acquisition_date);
+    -- Seed Fidelity account if not exists
+    INSERT INTO accounts (account_id, account_name, broker, account_type)
+    VALUES ('15237882', 'Savitri FSI — Fidelity Brokerage', 'Fidelity', 'Brokerage')
+    ON CONFLICT (account_id) DO NOTHING;  `);
   console.log('[Postgres] Schema verified â 5 tables ready');
 };
 
