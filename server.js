@@ -809,4 +809,59 @@ app.post('/v1/chat/completions', async (req, res) => {
       role:    m.role === 'assistant' ? 'assistant' : 'user',
       content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
     }));
-    if (!msgs.ÆVæwF×6w2çW6²&öÆS¢wW6W"rÂ6öçFVçC¢tVÆÆòrÒ° ¢6öç7BÆ7EW6W"Ò²ââæ×6w5Òç&WfW'6RæfæBÒÓâÒç&öÆRÓÓÒwW6W"r°¢bÆ7EW6W"vB6fTÖW76vR6DBÂwW6W"rÂÆ7EW6W"æ6öçFVçB° ¢ÆWB6öÖÖæEVWVVBÒfÇ6S°¢bÆ7EW6W"bb47Föå&WVW7BÆ7EW6W"æ6öçFVçB°¢6öç7B6ÖDBÒvBVWVT6öÖÖæBÆ7EW6W"æ6öçFVçBÂwfö6Rr°¢b6ÖDB6öÖÖæEVWVVBÒG'VS°¢Ð ¢6öç7B7F÷'ÒvBvWD7F÷'6DBÂB°¢6öç7BfæÄ×6w2Ò7F÷'æÆVæwFâò7F÷'æÖÓâ²&öÆS¢ç&öÆRÂ6öçFVçC¢æ6öçFVçBÒ¢×6w3°¢6öç7B77FVÒÒvB'VÆE77FVÕ&ö×B° ¢b7G&VÒ°¢&W2ç6WDVFW"t6öçFVçBÕGRrÂwFWBöWfVçB×7G&VÒr°¢&W2ç6WDVFW"t66RÔ6öçG&öÂrÂvæòÖ66Rr°¢&W2ç6WDVFW"t6öææV7FöârÂv¶VWÖÆfRr°¢6öç7B7"ÒvBçF&÷2æÖW76vW2æ7&VFR²ÖöFVÃ¢v6ÆVFR×6öææWBÓBÓbrÂÖ÷Fö¶Vç3¢SÂ77FVÒÂÖW76vW3¢fæÄ×6w2Â7G&VÓ¢G'VRÒ°¢6öç7BBÒ6F6×ÂÒG´FFRææ÷rÖ°¢ÆWBgVÆÅ&WÇÒrs°¢f÷"vB6öç7BWböb7"°¢bWbçGRÓÓÒv6öçFVçEö&Æö6µöFVÇFrbbWbæFVÇFòçGRÓÓÒwFWEöFVÇFr°¢gVÆÅ&WÇ³ÒWbæFVÇFçFWC°¢&W2çw&FRFF¢G´¥4ôâç7G&ævg²BÂö&¦V7C¢v6Bæ6ö×ÆWFöâæ6Væ²rÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂFVÇF¢²&öÆS¢v767FçBrÂ6öçFVçC¢WbæFVÇFçFWBÒÂfæ6÷&V6öã¢çVÆÂÕÒÒÕÆåÆæ°¢Ð¢bWbçGRÓÓÒvÖW76vU÷7F÷r°¢vB6fTÖW76vR6DBÂv767FçBrÂgVÆÅ&WÇ°¢&W2çw&FRFF¢G´¥4ôâç7G&ævg²BÂö&¦V7C¢v6Bæ6ö×ÆWFöâæ6Væ²rÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂFVÇF¢·ÒÂfæ6÷&V6öã¢w7F÷rÕÒÒÕÆåÆæ°¢&W2çw&FRvFF¢´DôäUÕÆåÆâr°¢&W2æVæB°¢Ð¢Ð¢ÒVÇ6R°¢6öç7B"ÒvBçF&÷2æÖW76vW2æ7&VFR²ÖöFVÃ¢v6ÆVFR×6öææWBÓBÓbrÂÖ÷Fö¶Vç3¢SÂ77FVÒÂÖW76vW3¢fæÄ×6w2Ò°¢6öç7B&WÇÒ"æ6öçFVçE³ÒçFWC°¢vB6fTÖW76vR6DBÂv767FçBrÂ&WÇ°¢&W2æ§6öâ²C¢6F6×ÂÒG´FFRææ÷rÖÂö&¦V7C¢v6Bæ6ö×ÆWFöârÂ7&VFVC¢ÖFæfÆö÷"FFRææ÷róÂÖöFVÃ¢vÖG&Ö'&â×crÂ6ö6W3¢·²æFW¢ÂÖW76vS¢²&öÆS¢v767FçBrÂ6öçFVçC¢&WÇÒÂfæ6÷&V6öã¢w7F÷rÕÒÒ°¢Ð¢Ò6F6R²b&W2æVFW'56VçB&W2ç7FGW2Sæ§6öâ²W'&÷#¢RæÖW76vRÒ²Ð§Ò° ¢òòÒÒÒÒÒÒÒÒÒÒÒÒ7F'BÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÒÐ¦6öç7Bõ%BÒ&ö6W72æVçbåõ%BÇÂ3°  ¦æÆ7FVâõ%BÂ7æ2Óâ°¢6öç6öÆRæÆörÆäÖG&'&âcãÒÒÒ6fG&÷'FföÆòFF&6RÂç7FGWFöæÂÖVÖ÷'°¢6öç6öÆRæÆör4e46Vböb7FfbÂ6fG&g6æ6öÖ°¢6öç6öÆRæÆör÷'C¢Gµõ%GÒÂG¶æWrFFRçFô4õ7G&ærÕÆæ°¢vBæE&VF2°¢vBæE÷7Fw&W2°¢òòFVÆVw&ÒöÆÆæs¢ÄdRÒÒÒVæ&ÆVB##bÓBÓ#¢bDuõDô´Tâ²öÆÅFVÆVw&Ò²6WDçFW'fÂöÆÅFVÆVw&ÒÂ3²ÒòòVæ&ÆVB##bÓBÓ#ÒÒÒvÆö&ÂÖG&ÆfRöâFVÆVw&Ð§Ò°
+    if (!msgs.length) msgs.push({ role: 'user', content: 'Hello' });
+
+    const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+    if (lastUser) await saveMessage(chatId, 'user', lastUser.content);
+
+    let commandQueued = false;
+    if (lastUser && isActionRequest(lastUser.content)) {
+      const cmdId = await queueCommand(lastUser.content, 'voice');
+      if (cmdId) commandQueued = true;
+    }
+
+    const history   = await getHistory(chatId, 14);
+    const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
+    const system    = await buildSystemPrompt();
+
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const sr = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
+      const id = `chatcmpl-${Date.now()}`;
+      let fullReply = '';
+      for await (const ev of sr) {
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+          fullReply += ev.delta.text;
+          res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, delta: { role: 'assistant', content: ev.delta.text }, finish_reason: null }] })}\n\n`);
+        }
+        if (ev.type === 'message_stop') {
+          await saveMessage(chatId, 'assistant', fullReply);
+          res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      }
+    } else {
+      const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
+      const reply = r.content[0].text;
+      await saveMessage(chatId, 'assistant', reply);
+      res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }] });
+    }
+  } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
+});
+
+// Ã¢ÂÂÃ¢ÂÂ Start Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+const PORT = process.env.PORT || 3000;
+
+
+app.listen(PORT, async () => {
+  console.log(`\nMitra Brain API v11.1 â Savitri Portfolio Database | Institutional Memory`);
+  console.log(`SFSI Chief of Staff | savitrifsi.com`);
+  console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
+  await initRedis();
+  await initPostgres();
+  // Telegram polling: LIVE â enabled 2026-04-21
+  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 â Global Mitra live on Telegram
+});
