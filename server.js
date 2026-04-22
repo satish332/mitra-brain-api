@@ -465,7 +465,7 @@ RESPONSE FORMAT:
 - Text/Telegram: 2-4 sentences unless detail requested.
 - ISRG Stress Test format: Delta | Nesh Factor | So What.
 
-BUILD: Brain API v10.0 | IBOR Ledger (Phase 2A) + Digital Twin (Postgres) + Conversation Memory (Redis) | 2026-04-20
+BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
 Voice: Vapi +1 (949) 516-9654`;
 
 const buildSystemPrompt = async () => {
@@ -760,6 +760,7 @@ app.get('/portfolio', requireKey, async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT c.name, c.ticker, c.sector, c.conviction_level, c.status,
+              c.thesis, c.kill_switch, c.next_catalyst,
               p.entry_date, p.entry_price, p.shares, p.tranche_plan, p.notes AS position_notes
        FROM positions p
        JOIN companies c ON c.id = p.company_id
@@ -816,6 +817,67 @@ app.get('/twin/summary', requireKey, async (req, res) => {
     res.json({ companies: rows, total: rows.length, retrieved_at: new Date().toISOString() });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Savitri Portfolio Database — GET Endpoints ──────────────────────────────
+
+// GET /v1/portfolio/:account_id — open lots with intelligence context
+app.get('/v1/portfolio/:account_id', requireKey, async (req, res) => {
+  if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
+  const { account_id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.ticker, c.name, c.sector, c.conviction_level, c.thesis, c.kill_switch, c.next_catalyst,
+              SUM(tl.remaining_quantity) AS shares,
+              AVG(tl.cost_basis_per_share) AS avg_cost,
+              SUM(tl.remaining_quantity * tl.cost_basis_per_share) AS total_cost_basis,
+              MIN(tl.acquisition_date) AS first_acquired
+       FROM tax_lots tl
+       JOIN securities s ON s.sid = tl.sid
+       LEFT JOIN companies c ON UPPER(c.ticker) = UPPER(s.ticker)
+       WHERE tl.account_id = $1 AND tl.is_open = TRUE
+       GROUP BY s.ticker, c.name, c.sector, c.conviction_level, c.thesis, c.kill_switch, c.next_catalyst
+       ORDER BY SUM(tl.remaining_quantity * tl.cost_basis_per_share) DESC NULLS LAST`,
+      [account_id]
+    );
+    const enriched = await Promise.all(rows.map(async (row) => {
+      const quote = await fmpQuote(row.ticker);
+      if (!quote) return { ...row, current_price: null, market_value: null, unrealized_pnl: null };
+      const marketValue = quote.price * parseFloat(row.shares);
+      const costBasis   = parseFloat(row.total_cost_basis);
+      return {
+        ...row,
+        current_price:  quote.price,
+        change_pct:     quote.changesPercentage,
+        market_value:   marketValue.toFixed(2),
+        unrealized_pnl: (marketValue - costBasis).toFixed(2),
+        unrealized_pct: costBasis > 0 ? (((marketValue - costBasis) / costBasis) * 100).toFixed(2) : null
+      };
+    }));
+    res.json({ account_id, positions: enriched, count: enriched.length, retrieved_at: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /v1/transactions/:account_id — transaction history from lot_transactions
+app.get('/v1/transactions/:account_id', requireKey, async (req, res) => {
+  if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
+  const { account_id } = req.params;
+  const limit = parseInt(req.query.limit) || 100;
+  try {
+    const { rows } = await pool.query(
+      `SELECT lt.lot_id, s.ticker, lt.transaction_type, lt.quantity, lt.price_per_share,
+              lt.total_amount, lt.transaction_date, lt.notes
+       FROM lot_transactions lt
+       JOIN tax_lots tl ON tl.lot_id = lt.lot_id
+       JOIN securities s ON s.sid = tl.sid
+       WHERE tl.account_id = $1
+       ORDER BY lt.transaction_date DESC
+       LIMIT $2`,
+      [account_id, limit]
+    );
+    res.json({ account_id, transactions: rows, count: rows.length, retrieved_at: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 
 // ââ Memory Context Endpoints ââââââââââââââââââââââââââââââââââââââââââââââââââ
 app.post('/memory/context', requireKey, async (req, res) => {
