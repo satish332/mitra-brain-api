@@ -555,8 +555,8 @@ const buildSystemPrompt = async () => {
   // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
   let twinContext = '';
   if (pgReady) {
-    const memRows = await pool.query('SELECT file_name, content FROM memory ORDER BY updated_at DESC').catch(()=>({rows:[]}));
-      const memorySection = memRows.rows.length > 0 ? memRows.rows.map(r => r.content).join('\n\n---\n\n').slice(0, 9000) : '';
+    var memRows = await pool.query('SELECT file_name, content FROM memory ORDER BY updated_at DESC').catch(()=>({rows:[]}));
+      var memorySection = memRows.rows.length > 0 ? memRows.rows.map(r => r.content).join('\n\n---\n\n').slice(0, 9000) : '';
 
   try {
             const { rows: positions } = await pool.query(
