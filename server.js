@@ -1,4 +1,4 @@
-import express from 'express';
+—import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from 'redis';
@@ -9,7 +9,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
 // ------------ FMP Market Data Helper ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const FMP_KEY = process.env.FMP_API_KEY || '';
@@ -1015,8 +1015,7 @@ app.post('/ask', async (req, res) => {
   try {
     await saveMessage(chatId, 'user', question);
     const history = await getHistory(chatId, 14);
-    let _basePrompt = await buildSystemPrompt();
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = 'You are Mitra Sahai, Chief of Staff at Savitri Financial Solution Inc. (SFSI). You have live data tools — use them immediately when relevant. Stock price query: call get_stock_quote. News/research query: call web_search. Portfolio query: call get_portfolio_data. Be direct and data-driven. Sign responses as Mitra.';
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
     const needsStock = /price|quote|stock|ticker|market cap|earnings/i.test(question);
     const needsSearch = /news|search|latest|recent|research/i.test(question);
