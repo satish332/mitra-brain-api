@@ -503,6 +503,7 @@ const processMessage = async (text, messageId, chatId) => {
   const needsStock = /price|quote|stock|ticker|market cap|earnings/i.test(trimmed);
   const needsSearch = /news|search|latest|recent|research/i.test(trimmed);
   const toolChoice = needsStock ? { type: 'tool', name: 'get_stock_quote' } : needsSearch ? { type: 'tool', name: 'web_search' } : { type: 'auto' };
+  let activeToolChoice = toolChoice;
   let reply = '';
   const toolMsgs = [...workMessages];
   for (let guard = 0; guard < 8; guard++) {
@@ -511,10 +512,11 @@ const processMessage = async (text, messageId, chatId) => {
       max_tokens: 4096,
       system: systemPrompt,
       tools: MITRA_TOOLS,
-      tool_choice: toolChoice,
+      tool_choice: activeToolChoice,
       messages: toolMsgs
     });
     if (response.stop_reason === 'tool_use') {
+      activeToolChoice = { type: 'auto' };
       toolMsgs.push({ role: 'assistant', content: response.content });
       const toolResults = [];
       for (const block of response.content) {
@@ -1022,6 +1024,7 @@ app.post('/ask', async (req, res) => {
     const toolChoice = needsStock ? { type: 'tool', name: 'get_stock_quote' }
       : needsSearch ? { type: 'tool', name: 'web_search' }
       : { type: 'auto' };
+    let activeToolChoice = toolChoice;
     let reply = '';
     const toolMsgs = [...messages];
     for (let guard = 0; guard < 8; guard++) {
@@ -1030,10 +1033,11 @@ app.post('/ask', async (req, res) => {
         max_tokens: 4096,
         system,
         tools: MITRA_TOOLS,
-        tool_choice: toolChoice,
+        tool_choice: activeToolChoice,
         messages: toolMsgs
       });
       if (response.stop_reason === 'tool_use') {
+        activeToolChoice = { type: 'auto' };
         toolMsgs.push({ role: 'assistant', content: response.content });
         const toolResults = [];
         for (const block of response.content) {
@@ -1613,6 +1617,7 @@ app.post('/ask', async (req, res) => {
     const toolChoice = needsStock ? { type: 'tool', name: 'get_stock_quote' }
       : needsSearch ? { type: 'tool', name: 'web_search' }
       : { type: 'auto' };
+    let activeToolChoice = toolChoice;
     let reply = '';
     const toolMsgs = [...messages];
     for (let guard = 0; guard < 8; guard++) {
@@ -1621,10 +1626,11 @@ app.post('/ask', async (req, res) => {
         max_tokens: 4096,
         system,
         tools: MITRA_TOOLS,
-        tool_choice: toolChoice,
+        tool_choice: activeToolChoice,
         messages: toolMsgs
       });
       if (response.stop_reason === 'tool_use') {
+        activeToolChoice = { type: 'auto' };
         toolMsgs.push({ role: 'assistant', content: response.content });
         const toolResults = [];
         for (const block of response.content) {
