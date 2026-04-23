@@ -257,23 +257,6 @@ const createSchema = async () => {
       created_at       TIMESTAMPTZ DEFAULT NOW()
     );
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS mitra_tasks (
-      id SERIAL PRIMARY KEY,
-      title TEXT NOT NULL,
-      description TEXT,
-      status VARCHAR(20) DEFAULT 'pending',
-      priority INTEGER DEFAULT 3,
-      source VARCHAR(50) DEFAULT 'cowork',
-      assigned_to VARCHAR(50) DEFAULT 'mitra',
-      due_date TIMESTAMPTZ,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW(),
-      completed_at TIMESTAMPTZ,
-      notes TEXT
-    )
-  `);
-
     CREATE INDEX IF NOT EXISTS idx_tax_lots_open    ON tax_lots(sid, account_id) WHERE is_open = TRUE;
     CREATE INDEX IF NOT EXISTS idx_tax_lots_account ON tax_lots(account_id, acquisition_date);
     -- Seed Fidelity account if not exists
@@ -1015,71 +998,54 @@ app.post('/v1/admin/upsert-companies', requireKey, async (req, res) => {
 });
 
 
+// ── MITRA TASKS ──────────────────────────────────────────────────────────────
+pool.query("CREATE TABLE IF NOT EXISTS mitra_tasks (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status VARCHAR(20) DEFAULT 'pending', priority INTEGER DEFAULT 3, source VARCHAR(50) DEFAULT 'cowork', assigned_to VARCHAR(50) DEFAULT 'mitra', due_date TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ, notes TEXT)").catch(e => console.error('[mitra_tasks] init error:', e.message));
 
-// ──────────────────────────────────────────────────────────
-// MITRA TASKS — Queue Management
-// ──────────────────────────────────────────────────────────
-
-// POST /v1/tasks — create a task
 app.post('/v1/tasks', requireKey, async (req, res) => {
   try {
     const { title, description, priority, source, assigned_to, due_date, notes } = req.body;
     if (!title) return res.status(400).json({ error: 'title required' });
-    const r = await pool.query(
-      `INSERT INTO mitra_tasks (title, description, priority, source, assigned_to, due_date, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [title, description||null, priority||3, source||'cowork', assigned_to||'mitra', due_date||null, notes||null]
-    );
-    res.json({ status: 'ok', task: r.rows[0] });
+    const r = await pool.query("INSERT INTO mitra_tasks (title,description,priority,source,assigned_to,due_date,notes) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *", [title, description||null, priority||3, source||'cowork', assigned_to||'mitra', due_date||null, notes||null]);
+    res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /v1/tasks — list tasks (optional ?status=pending)
 app.get('/v1/tasks', requireKey, async (req, res) => {
   try {
-    const { status, limit } = req.query;
-    let q = 'SELECT * FROM mitra_tasks';
+    const { status, assigned_to } = req.query;
+    let q = 'SELECT * FROM mitra_tasks WHERE 1=1';
     const params = [];
-    if (status) { q += ' WHERE status = $1'; params.push(status); }
-    q += ' ORDER BY priority ASC, created_at DESC';
-    q += ' LIMIT ' + (parseInt(limit) || 50);
+    if (status) { params.push(status); q += ' AND status=$' + params.length; }
+    if (assigned_to) { params.push(assigned_to); q += ' AND assigned_to=$' + params.length; }
+    q += ' ORDER BY priority ASC, created_at ASC';
     const r = await pool.query(q, params);
     res.json({ tasks: r.rows, count: r.rows.length });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// PATCH /v1/tasks/:id — update status, notes, assigned_to
 app.patch('/v1/tasks/:id', requireKey, async (req, res) => {
   try {
-    const { id } = req.params;
-    const { status, notes, assigned_to, priority } = req.body;
-    const completedAt = status === 'completed' ? 'NOW()' : 'completed_at';
-    const r = await pool.query(
-      `UPDATE mitra_tasks SET
-         status = COALESCE($1, status),
-         notes = COALESCE($2, notes),
-         assigned_to = COALESCE($3, assigned_to),
-         priority = COALESCE($4, priority),
-         updated_at = NOW(),
-         completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END
-       WHERE id = $5 RETURNING *`,
-      [status||null, notes||null, assigned_to||null, priority||null, id]
-    );
+    const id = parseInt(req.params.id);
+    const fields = req.body;
+    const allowed = ['title','description','status','priority','assigned_to','due_date','notes'];
+    const sets = []; const vals = [];
+    for (const k of allowed) { if (fields[k] !== undefined) { vals.push(fields[k]); sets.push(k + '=$' + vals.length); } }
+    if (sets.length === 0) return res.status(400).json({ error: 'no fields to update' });
+    if (fields.status === 'completed') sets.push('completed_at=NOW()');
+    sets.push('updated_at=NOW()');
+    vals.push(id);
+    const r = await pool.query('UPDATE mitra_tasks SET ' + sets.join(',') + ' WHERE id=$' + vals.length + ' RETURNING *', vals);
     if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
-    res.json({ status: 'ok', task: r.rows[0] });
+    res.json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-// DELETE /v1/tasks/:id — cancel (soft delete via status)
 app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
   try {
-    const { id } = req.params;
-    const r = await pool.query(
-      'UPDATE mitra_tasks SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
-      ['cancelled', id]
-    );
+    const id = parseInt(req.params.id);
+    const r = await pool.query("UPDATE mitra_tasks SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING id", [id]);
     if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
-    res.json({ status: 'ok', cancelled_id: r.rows[0].id });
+    res.json({ cancelled: r.rows[0].id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
