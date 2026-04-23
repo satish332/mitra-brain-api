@@ -1049,7 +1049,11 @@ app.post('/ask', async (req, res) => {
         }
         toolMsgs.push({ role: 'user', content: toolResults });
       } else {
-        const tb = response.content.catch (e) {
+        const tb = response.content.find(b => b.type === 'text');
+        const answer = tb?.text || '';
+        return res.json({ answer, chatId });
+      }
+} catch (e) {
   const msg = e.message || '';
   if (msg.includes('429') || msg.includes('rate_limit')) {
     return res.status(429).json({ error: 'rate_limit', answer: 'Mitra (Global - Railway)\n\nRate limit reached (30k TPM). Please retry in 60 seconds.', chatId });
