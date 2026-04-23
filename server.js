@@ -1018,8 +1018,38 @@ app.post('/ask', async (req, res) => {
     let _basePrompt = await buildSystemPrompt();
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
-    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
-    const reply = r.content[0].text;
+    const needsStock = /price|quote|stock|ticker|market cap|earnings/i.test(question);
+    const needsSearch = /news|search|latest|recent|research/i.test(question);
+    const toolChoice = needsStock ? { type: 'tool', name: 'get_stock_quote' }
+      : needsSearch ? { type: 'tool', name: 'web_search' }
+      : { type: 'auto' };
+    let reply = '';
+    const toolMsgs = [...messages];
+    for (let guard = 0; guard < 8; guard++) {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system,
+        tools: MITRA_TOOLS,
+        tool_choice: toolChoice,
+        messages: toolMsgs
+      });
+      if (response.stop_reason === 'tool_use') {
+        toolMsgs.push({ role: 'assistant', content: response.content });
+        const toolResults = [];
+        for (const block of response.content) {
+          if (block.type === 'tool_use') {
+            const result = await executeToolCall(block.name, block.input);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: typeof result === 'string' ? result : JSON.stringify(result) });
+          }
+        }
+        toolMsgs.push({ role: 'user', content: toolResults });
+      } else {
+        const tb = response.content.find(b => b.type === 'text');
+        reply = tb ? tb.text : '';
+        break;
+      }
+    }
     await saveMessage(chatId, 'assistant', reply);
     res.json({ answer: reply, chatId });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1579,8 +1609,38 @@ app.post('/ask', async (req, res) => {
       const _dm = await getToolContext(question);
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
-    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
-    const reply = r.content[0].text;
+    const needsStock = /price|quote|stock|ticker|market cap|earnings/i.test(question);
+    const needsSearch = /news|search|latest|recent|research/i.test(question);
+    const toolChoice = needsStock ? { type: 'tool', name: 'get_stock_quote' }
+      : needsSearch ? { type: 'tool', name: 'web_search' }
+      : { type: 'auto' };
+    let reply = '';
+    const toolMsgs = [...messages];
+    for (let guard = 0; guard < 8; guard++) {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system,
+        tools: MITRA_TOOLS,
+        tool_choice: toolChoice,
+        messages: toolMsgs
+      });
+      if (response.stop_reason === 'tool_use') {
+        toolMsgs.push({ role: 'assistant', content: response.content });
+        const toolResults = [];
+        for (const block of response.content) {
+          if (block.type === 'tool_use') {
+            const result = await executeToolCall(block.name, block.input);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: typeof result === 'string' ? result : JSON.stringify(result) });
+          }
+        }
+        toolMsgs.push({ role: 'user', content: toolResults });
+      } else {
+        const tb = response.content.find(b => b.type === 'text');
+        reply = tb ? tb.text : '';
+        break;
+      }
+    }
     await saveMessage(chatId, 'assistant', reply);
     res.json({ answer: reply, chatId });
   } catch (e) { res.status(500).json({ error: e.message }); }
