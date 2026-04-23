@@ -20,8 +20,9 @@ const fmpQuote = async (ticker) => {
   try {
     const r = await fetch(`${FMP_BASE}/quote/${ticker}?apikey=${FMP_KEY}`);
     const d = await r.json();
-    return d?.[0] || null;
-  } catch { return null; }
+    if (d && (d['Error Message'] || d.message)) return { error: 'FMP: ' + (d['Error Message'] || d.message) };
+    return d?.[0] || { error: 'FMP returned empty response' };
+  } catch (e) { return { error: 'FMP fetch failed: ' + e.message }; }
 };
 
 const fmpNews = async (ticker, limit = 3) => {
@@ -1048,14 +1049,28 @@ app.post('/ask', async (req, res) => {
         }
         toolMsgs.push({ role: 'user', content: toolResults });
       } else {
-        const tb = response.content.find(b => b.type === 'text');
-        reply = tb ? tb.text : '';
-        break;
-      }
-    }
-    await saveMessage(chatId, 'assistant', reply);
-    res.json({ answer: reply, chatId });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+        const tb = response.content.catch (e) {
+  const msg = e.message || '';
+  if (msg.includes('429') || msg.includes('rate_limit')) {
+    return res.status(429).json({ error: 'rate_limit', answer: 'Mitra (Global - Railway)\n\nRate limit reached (30k TPM). Please retry in 60 seconds.', chatId });
+  }
+  res.status(500).json({ error: msg, chatId });
+}
+});
+
+// ------------ /v1/test-fmp -----------------------------------------------------------------------------------------------------------
+app.get('/v1/test-fmp/:ticker', async (req, res) => {
+  const ticker = req.params.ticker.toUpperCase();
+  const FMP_KEY = process.env.FMP_API_KEY || '';
+  if (!FMP_KEY) return res.json({ error: 'FMP_API_KEY not configured', ticker });
+  try {
+    const r = await fetch(`https://financialmodelingprep.com/api/v3/quote/${ticker}?apikey=${FMP_KEY}`);
+    const d = await r.json();
+    res.json({ ticker, keyPresent: true, rawLen: JSON.stringify(d).length, quote: d?.[0] || null, fmpError: d?.['Error Message'] || d?.message || null });
+  } catch (e) { res.json({ ticker, keyPresent: true, fetchError: e.message }); }
+});
+
+// ------------ /chat -------------------------------------------------------------------------------------------------------------------{ res.status(500).json({ error: e.message }); }
 });
 
 // ------------ /chat ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
