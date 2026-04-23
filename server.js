@@ -546,7 +546,7 @@ async function getToolContext(msgText) {
   const tMatch = msgText.match(/\$([A-Z]{1,5})\b/) || ((t.includes('stock') || t.includes('price') || t.includes('quote')) ? msgText.match(/\b([A-Z]{2,5})\b/) : null);
   if (tMatch) {
     const q = await fetchFMP(tMatch[1]);
-    if (q) parts.push('[LIVE QUOTE ' + tMatch[1] + ']  = async () => {
+    if (q) parts.push('[LIVE QUOTE ' + tMatch[1] + '] ' + q.price + ' | chg: ' + q.change + ' (' + q.changesPercentage + '%)');
   if (!TG_TOKEN) return;
   try {
     const params = new URLSearchParams({ limit: '20' });
@@ -1106,7 +1106,7 @@ app.listen(PORT, async () => {
   await initRedis();
   await initPostgres();
   // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
-  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
+ if (process.env.ENABLE_TELEGRAM_POLL === 'true') { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
 });
  + q.price + ' | chg: ' + q.change + ' (' + q.changesPercentage + '%)');
   }
