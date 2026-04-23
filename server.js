@@ -1099,16 +1099,6 @@ app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
-  console.log(`SFSI Chief of Staff | savitrifsi.com`);
-  console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
-  await initRedis();
-  await initPostgres();
-  // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
- if (process.env.ENABLE_TELEGRAM_POLL === 'true') { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
-});
-  }
   if (t.includes('search') || t.includes('news') || t.includes('research') || t.includes('latest')) {
     const res = await fetchTavily(msgText);
     if (res) parts.push('[WEB]\n' + res);
@@ -1118,6 +1108,17 @@ app.listen(PORT, async () => {
     if (d) parts.push('[TRUTHIFI] ' + JSON.stringify(d).substring(0, 300));
   }
   return parts.length ? '\n\n[LIVE DATA]\n' + parts.join('\n') : '';
+}
+app.listen(PORT, async () => {
+  console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
+  console.log(`SFSI Chief of Staff | savitrifsi.com`);
+  console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
+  await initRedis();
+  await initPostgres();
+  // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
+ if (process.env.ENABLE_TELEGRAM_POLL === 'true') { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
+});
+
 
 const pollTelegram = async () => {
   if (!TG_TOKEN) return;
