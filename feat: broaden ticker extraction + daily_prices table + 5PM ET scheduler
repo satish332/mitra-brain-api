@@ -544,7 +544,7 @@ async function fetchTruthifi(endpoint) {
 async function getToolContext(msgText) {
   const t = msgText.toLowerCase();
   const parts = [];
-  const tMatch = msgText.match(/\$([A-Z]{1,5})\b/) || ((t.includes('stock') || t.includes('price') || t.includes('quote')) ? msgText.match(/\b([A-Z]{2,5})\b/) : null);
+  const tMatch = msgText.match(/\$([A-Z]{1,5})\b/) || msgText.match(/\b([A-Z]{2,5})\b/);
   if (tMatch) {
     const q = await fetchFMP(tMatch[1]);
     if (q) parts.push('[LIVE QUOTE ' + tMatch[1] + '] ' + q.price + ' | chg: ' + q.change + ' (' + q.changesPercentage + '%)');
@@ -1660,6 +1660,82 @@ app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
     res.json({ cancelled: r.rows[0].id });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
+
+// -- Daily Price Pull -------------------------------------------------------
+const fetchAndStoreDailyPrices = async () => {
+  if (!FMP_KEY) { console.log('[prices] FMP_KEY not set — skipping'); return; }
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS daily_prices (
+      id          SERIAL PRIMARY KEY,
+      sid         INTEGER NOT NULL REFERENCES securities(id) ON DELETE CASCADE,
+      price_date  DATE NOT NULL,
+      close_price NUMERIC(14,4) NOT NULL,
+      avg_cost    NUMERIC(14,4),
+      quantity    NUMERIC(18,6),
+      mkt_value   NUMERIC(14,2),
+      cost_basis  NUMERIC(14,2),
+      gain_dollar NUMERIC(14,2),
+      gain_pct    NUMERIC(8,4),
+      source      TEXT DEFAULT 'FMP',
+      fetched_at  TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(sid, price_date)
+    )`);
+    const { rows } = await pool.query(`
+      SELECT s.id AS sid, s.ticker,
+             SUM(t.quantity) AS total_qty,
+             SUM(t.cost_basis) / NULLIF(SUM(t.quantity), 0) AS avg_cost
+      FROM tax_lots t
+      JOIN securities s ON s.id = t.sid
+      WHERE t.quantity > 0
+      GROUP BY s.id, s.ticker
+    `);
+    console.log('[prices] pulling quotes for', rows.length, 'positions');
+    const today = new Date().toISOString().slice(0, 10);
+    let ok = 0, skip = 0;
+    for (const row of rows) {
+      try {
+        const q = await fmpQuote(row.ticker);
+        if (!q || !q.price) { skip++; continue; }
+        const price  = parseFloat(q.price);
+        const qty    = parseFloat(row.total_qty);
+        const avg    = parseFloat(row.avg_cost);
+        const mktVal = price * qty;
+        const costB  = avg * qty;
+        const gainD  = mktVal - costB;
+        const gainP  = costB !== 0 ? (gainD / costB) * 100 : 0;
+        await pool.query(
+          `INSERT INTO daily_prices
+           (sid,price_date,close_price,avg_cost,quantity,mkt_value,cost_basis,gain_dollar,gain_pct)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT (sid,price_date) DO UPDATE SET
+             close_price=$3,avg_cost=$4,quantity=$5,
+             mkt_value=$6,cost_basis=$7,gain_dollar=$8,gain_pct=$9,
+             fetched_at=NOW()`,
+          [row.sid, today, price, avg, qty, mktVal, costB, gainD, gainP]
+        );
+        ok++;
+      } catch (e) { console.error('[prices] error for', row.ticker, e.message); skip++; }
+    }
+    console.log('[prices] done — ok:', ok, 'skip:', skip);
+  } catch (e) { console.error('[prices] fatal:', e.message); }
+};
+
+// Scheduler: 5:00 PM ET weekdays — fire once per calendar day
+let _lastPriceDate = null;
+setInterval(() => {
+  const now = new Date();
+  const fmt = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: 'numeric', hour12: false, timeZone: 'America/New_York' });
+  const parts = fmt.formatToParts(now);
+  const etHour = parseInt(parts.find(p => p.type === 'hour').value);
+  const etMin  = parseInt(parts.find(p => p.type === 'minute').value);
+  const dow    = now.getUTCDay();
+  const today  = now.toISOString().slice(0, 10);
+  if (dow >= 1 && dow <= 5 && etHour === 17 && etMin < 5 && _lastPriceDate !== today) {
+    _lastPriceDate = today;
+    console.log('[prices] scheduler triggered for', today);
+    fetchAndStoreDailyPrices();
+  }
+}, 60000);
 
 app.listen(PORT, async () => {
   console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
