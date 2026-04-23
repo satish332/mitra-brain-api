@@ -475,6 +475,7 @@ const STOP_PATTERNS = /^stop\b|^cancel\b|^abort\b/i;
 
 const processMessage = async (text, messageId, chatId) => {
   const trimmed = text.trim();
+  const toolCtx = await getToolContext(trimmed);
   await saveMessage(chatId, 'user', trimmed);
   if (STOP_PATTERNS.test(trimmed)) {
     const r = 'Mitra\nUnderstood Boss. Stopping. Standing by.';
@@ -492,12 +493,633 @@ const processMessage = async (text, messageId, chatId) => {
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: trimmed }];
     const last = messages[messages.length - 1];
     if (last.role === 'user') last.content = last.content.replace(/@mitra\b/gi, '').replace(/^mitra[,:\s]*/i, '').trim() || last.content;
-    const response = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 250, system: systemPrompt, messages });
+    const response = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 250, system: systemPrompt + toolCtx, messages });
     const reply = response.content[0].text;
     await saveMessage(chatId, 'assistant', reply);
     await tgSend(reply);
-  } catch { await tgSend('Mitra\nError. Please check Cowork.'); }
+  pool.query("INSERT INTO memory (file_name, content, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (file_name) DO UPDATE SET content = $2, updated_at = NOW()", ["telegram_last_exchange", JSON.stringify({user: text.substring(0,200), assistant: reply.substring(0,500), ts: new Date().toISOString()})]).catch(e => console.error("[Fix B]", e.message));
+  } catch (e) {
+  console.error('[processMessage] Failed:', e.message);
+}
 };
+
+
+// === Fix G: External Tool Access — FMP, Tavily, Truthifi ===
+async function fetchFMP(symbol) {
+  try {
+    const key = process.env.FMP_API_KEY;
+    if (!key) return null;
+    const r = await fetch('https://financialmodelingprep.com/api/v3/quote/' + encodeURIComponent(symbol) + '?apikey=' + key);
+    const d = await r.json();
+    return d[0] || null;
+  } catch(e) { console.error('[FMP]', e.message); return null; }
+}
+
+async function fetchTavily(query) {
+  try {
+    const key = process.env.TAVILY_API_KEY;
+    if (!key) return null;
+    const r = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key},
+      body: JSON.stringify({query, max_results: 3, search_depth: 'basic'})
+    });
+    const d = await r.json();
+    return d.results ? d.results.map(x => x.title + ': ' + x.content).join('\n') : null;
+  } catch(e) { console.error('[Tavily]', e.message); return null; }
+}
+
+async function fetchTruthifi(endpoint) {
+  try {
+    const key = process.env.TRUTHIFI_API_KEY;
+    if (!key) return null;
+    const r = await fetch('https://api.truthifi.com/' + endpoint, {
+      headers: {'Authorization': 'Bearer ' + key}
+    });
+    return await r.json();
+  } catch(e) { console.error('[Truthifi]', e.message); return null; }
+}
+
+async function getToolContext(msgText) {
+  const t = msgText.toLowerCase();
+  const parts = [];
+  const tMatch = msgText.match(/\$([A-Z]{1,5})\b/) || ((t.includes('stock') || t.includes('price') || t.includes('quote')) ? msgText.match(/\b([A-Z]{2,5})\b/) : null);
+  if (tMatch) {
+    const q = await fetchFMP(tMatch[1]);
+    if (q) parts.push('[LIVE QUOTE ' + tMatch[1] + ']  = async () => {
+  if (!TG_TOKEN) return;
+  try {
+    const params = new URLSearchParams({ limit: '20' });
+    if (lastUpdateId > 0) params.set('offset', String(lastUpdateId + 1));
+    const res  = await fetch(`${TG_API}/getUpdates?${params}`);
+    const data = await res.json();
+    if (!data.ok || !data.result?.length) return;
+    for (const update of data.result) {
+      if (update.update_id > lastUpdateId) lastUpdateId = update.update_id;
+      const msg = update.message ?? update.channel_post;
+      if (!msg?.text) continue;
+      if (msg?.from?.is_bot) continue; // Fix D: skip bot self-messages
+      await processMessage(msg.text, msg.message_id, msg.chat?.id ?? TG_CHAT_ID);
+    }
+    if (lastUpdateId > 0) await fetch(`${TG_API}/getUpdates?offset=${lastUpdateId + 1}&limit=1`);
+  } catch {}
+};
+
+// ------------ System Prompt ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
+
+IDENTITY:
+Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Mitra" on the first line.
+
+THE TEAM:
+- Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
+- Julieta Sharma (Jing) ------ Madam Boss, CFO. Financial controls and reporting lead.
+- Pradnesh Sharma (Nesh) ------ The Brains, Investment Specialist. Research authority.
+
+SAVITRI PORTFOLIO DATABASE --- v11.1 CAPABILITY:
+SFSI now has a live Postgres institutional memory ------ the Savitri Portfolio Database. I CAN:
+- Query company profiles (thesis, conviction, kill switch, next catalyst)
+- Retrieve SFSI positions (entry price, tranches, P&L)
+- Pull relationship records (founders, CEOs, analysts)
+- Log new thesis, position, and decision records on Nesh's command
+- Cross-reference live FMP market data against stored thesis
+- Surface pre-earnings notes and post-earnings delta analysis
+
+Current companies in the Twin: ISRG (Position Open), Novo Nordisk (Active Watch), OpenAI (Pre-IPO), Anthropic (Pre-IPO), Cerebras Systems (Pre-IPO).
+
+NESH LOG COMMAND FORMAT:
+When Nesh says "Mitra, log thesis for [Company]: [thesis]. Conviction: [1-5]. Kill switch: [condition]." ------ I parse and write directly to the Digital Twin, then  market context.
+
+CORE PROTOCOLS:
+- NEVER take external action without Boss explicit GO.
+- Lead with bottom line, no fluff.
+- CC satish@savitrifsi.com on every outbound email. Zero exceptions.
+- Never disclose portfolio size or positions externally.
+- Investment execution authority: Boss only. Nesh researches, Boss approves and executes on Fidelity.
+
+RESPONSE FORMAT:
+- Voice calls: under 60 words, natural spoken language.
+- Text/Telegram: 2-4 sentences unless detail requested.
+- ISRG Stress Test format: Delta | Nesh Factor | So What.
+
+BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
+Voice: Vapi +1 (949) 516-9654`;
+
+const buildSystemPrompt = async () => {
+  const ctx = await getGlobalContext();
+
+  // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
+  let twinContext = '';
+  if (pgReady) {
+    var memRows = await pool.query('SELECT file_name, content FROM memory ORDER BY updated_at DESC').catch(()=>({rows:[]}));
+      var memorySection = memRows.rows.length > 0 ? memRows.rows.map(r => r.content).join('\n\n---\n\n').slice(0, 9000) : '';
+
+  try {
+            const { rows: positions } = await pool.query(
+        `SELECT agg.ticker,
+                COALESCE(c.name, agg.ticker) AS name,
+                c.sector, c.conviction_level, c.thesis, c.kill_switch, c.next_catalyst,
+                agg.shares, agg.avg_cost, agg.total_cost_basis, agg.first_acquired
+         FROM (
+           SELECT s.ticker,
+                  SUM(tl.remaining_quantity) AS shares,
+                  AVG(tl.cost_basis_per_share) AS avg_cost,
+                  SUM(tl.remaining_quantity * tl.cost_basis_per_share) AS total_cost_basis,
+                  MIN(tl.acquisition_date) AS first_acquired
+           FROM tax_lots tl
+           JOIN securities s ON s.sid = tl.sid
+           WHERE tl.account_id = '15237882' AND tl.is_open = TRUE
+           GROUP BY s.ticker
+         ) agg
+         LEFT JOIN companies c ON UPPER(c.ticker) = UPPER(agg.ticker)
+         ORDER BY agg.total_cost_basis DESC NULLS LAST`
+      );
+      const { rows: watchlist } = await pool.query(
+        `SELECT name, ticker, sector, conviction_level, thesis, kill_switch, next_catalyst
+         FROM companies WHERE status NOT IN ('Position Open') ORDER BY conviction_level DESC LIMIT 20`
+      );
+
+      twinContext = '\n\n--- DIGITAL TWIN --- SFSI LIVE PORTFOLIO & WATCHLIST ---\n';
+
+      if (positions.length > 0) {
+        twinContext += `OPEN POSITIONS (${positions.length}):\n`;
+        for (const p of positions) {
+          const shares = p.shares ? `${parseFloat(p.shares).toFixed(3)} shares` : '';
+          const cost = p.avg_cost ? `@ $${parseFloat(p.avg_cost).toFixed(2)} avg` : '';
+          const total = p.total_cost_basis ? `($${Math.round(parseFloat(p.total_cost_basis)).toLocaleString()} invested)` : '';
+          const thesis = p.thesis && !p.thesis.includes('Thesis Pending') ? ` | ${p.thesis.slice(0, 120)}` : '';
+          const kill = p.kill_switch ? ` | Kill switch: ${p.kill_switch.slice(0, 80)}` : '';
+          const catalyst = p.next_catalyst ? ` | Next catalyst: ${p.next_catalyst}` : '';
+          twinContext += `--- ${p.name} (${p.ticker}) | ${p.sector || 'N/A'} | ${shares} ${cost} ${total} | Conviction: ${p.conviction_level || '?'}/5${thesis}${kill}${catalyst}\n`;
+        }
+      }
+
+      if (watchlist.length > 0) {
+        twinContext += `\nWATCHLIST (${watchlist.length} companies):\n`;
+        for (const c of watchlist) {
+          const thesis = c.thesis && !c.thesis.includes('Thesis Pending') ? ` | ${c.thesis.slice(0, 100)}` : '';
+          const kill = c.kill_switch ? ` | Kill: ${c.kill_switch.slice(0, 60)}` : '';
+          twinContext += `--- ${c.name} (${c.ticker}) | ${c.sector} | Conviction: ${c.conviction_level}/5${thesis}${kill}\n`;
+        }
+      }
+
+      twinContext += '--- END DIGITAL TWIN ---';
+    } catch (e) {
+      twinContext = `\n[Digital Twin query error: ${e.message}]`;
+    }
+  }
+
+  const vlRows = await pool.query("SELECT content FROM voice_learnings ORDER BY created_at DESC LIMIT 30").catch(() => ({rows:[]}));
+  const vlSection = vlRows.rows.length ? "\n\n[VOICE LEARNINGS]\n" + vlRows.rows.map(r => "- " + r.content).join("\n") : "";
+  const base = MITRA_BASE_PROMPT + twinContext + vlSection;
+  if (!ctx) return base;
+  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
+};
+
+// ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
+const requireKey = (req, res, next) => {
+  if (!MITRA_SYNC_KEY) return next();
+  if (req.headers['x-mitra-key'] !== MITRA_SYNC_KEY) return res.status(401).json({ error: 'unauthorized' });
+  next();
+};
+
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// ROUTES
+// ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// ------------ Health ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.get('/', async (req, res) => {
+  const ctx = await getGlobalContext();
+  const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
+  const companyCount = pgReady ? (await pool.query('SELECT COUNT(*) FROM companies')).rows[0].count : 0;
+  const positionCount = pgReady ? (await pool.query("SELECT COUNT(*) FROM positions WHERE status='Open'")).rows[0].count : 0;
+  res.json({
+    status:         'ok',
+    version:        '11.1',
+    build:          'Savitri Portfolio Database v11.1',
+    memory: {
+      conversation: redisReady ? 'Redis (active)' : 'disabled',
+      institutional: pgReady ? `Postgres (${companyCount} companies, ${positionCount} open positions)` : 'disabled ------ set DATABASE_URL'
+    },
+    cowork_sync:    ctx.length > 0 ? `active (${ctx.length} chars, synced ${updatedAt || 'unknown'})` : 'not synced',
+    twin_companies: pgReady ? parseInt(companyCount) : 0,
+    endpoints: {
+      voice:         'POST /v1/chat/completions',
+      chat:          'POST /ask | POST /chat',
+
+
+      ibor_sync:     'POST /v1/sync/portfolio',
+      portfolio:     'GET /v1/portfolio/:account_id | GET /v1/transactions/:account_id | GET /v1/income/:account_id',
+      portfolio_write: 'POST /v1/sync/portfolio | POST /v1/log-income',
+      memory:         'POST|GET|DELETE /memory/context',
+      commands:       'GET /commands/pending | POST /commands/acknowledge | POST /commands/complete'
+    }
+  });
+});
+
+// ------ Savitri Portfolio Database --- GET Endpoints ------------------------------------------------------------------------------------------
+
+// GET /v1/portfolio/:account_id --- open lots with intelligence context
+app.get('/v1/portfolio/:account_id', requireKey, async (req, res) => {
+  if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
+  const { account_id } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.ticker,
+              MAX(c.name)              AS name,
+              MAX(c.sector)            AS sector,
+              MAX(c.conviction_level)  AS conviction_level,
+              MAX(c.thesis)            AS thesis,
+              MAX(c.kill_switch)       AS kill_switch,
+              MAX(c.next_catalyst)     AS next_catalyst,
+              SUM(tl.remaining_quantity)                          AS shares,
+              AVG(tl.cost_basis_per_share)                        AS avg_cost,
+              SUM(tl.remaining_quantity * tl.cost_basis_per_share) AS total_cost_basis,
+              MIN(tl.acquisition_date)                            AS first_acquired
+       FROM tax_lots tl
+       JOIN securities s ON s.sid = tl.sid
+       LEFT JOIN companies c ON UPPER(c.ticker) = UPPER(s.ticker)
+       WHERE tl.account_id = $1 AND tl.is_open = TRUE
+       GROUP BY s.ticker
+       ORDER BY SUM(tl.remaining_quantity * tl.cost_basis_per_share) DESC NULLS LAST`,
+      [account_id]
+    );
+    const enriched = await Promise.all(rows.map(async (row) => {
+      const quote = await fmpQuote(row.ticker);
+      if (!quote) return { ...row, current_price: null, market_value: null, unrealized_pnl: null };
+      const marketValue = quote.price * parseFloat(row.shares);
+      const costBasis   = parseFloat(row.total_cost_basis);
+      return {
+        ...row,
+        current_price:  quote.price,
+        change_pct:     quote.changesPercentage,
+        market_value:   marketValue.toFixed(2),
+        unrealized_pnl: (marketValue - costBasis).toFixed(2),
+        unrealized_pct: costBasis > 0 ? (((marketValue - costBasis) / costBasis) * 100).toFixed(2) : null
+      };
+    }));
+    res.json({ account_id, positions: enriched, count: enriched.length, retrieved_at: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /v1/transactions/:account_id --- transaction history from lot_transactions
+app.get('/v1/transactions/:account_id', requireKey, async (req, res) => {
+  if (!pgReady) return res.status(503).json({ error: 'Savitri Portfolio Database not ready' });
+  const { account_id } = req.params;
+  const limit = parseInt(req.query.limit) || 100;
+  try {
+    const { rows } = await pool.query(
+      `SELECT lt.lot_id, s.ticker, lt.transaction_type, lt.quantity, lt.price_per_share,
+              lt.total_amount, lt.transaction_date, lt.notes
+       FROM lot_transactions lt
+       JOIN tax_lots tl ON tl.lot_id = lt.lot_id
+       JOIN securities s ON s.sid = tl.sid
+       WHERE tl.account_id = $1
+       ORDER BY lt.transaction_date DESC
+       LIMIT $2`,
+      [account_id, limit]
+    );
+    res.json({ account_id, transactions: rows, count: rows.length, retrieved_at: new Date().toISOString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ------------ Memory Context Endpoints -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/memory/context', requireKey, async (req, res) => {
+  const { context } = req.body;
+  if (!context) return res.status(400).json({ error: 'context required' });
+  if (context.length > 8000) return res.status(400).json({ error: 'context too large (max 8000 chars)' });
+  const saved = await setGlobalContext(context);
+  res.json({ saved, chars: context.length, timestamp: new Date().toISOString() });
+});
+
+// --- Postgres Memory Sync Endpoint ---
+app.post('/v1/sync/memory', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { files } = req.body;
+  if (!Array.isArray(files) || files.length === 0) return res.status(400).json({error:'files array required'});
+  try {
+    let synced = 0;
+    for (const f of files) {
+      if (!f.file_name || !f.content) continue;
+      await pool.query(
+        'INSERT INTO memory (file_name, content, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (file_name) DO UPDATE SET content=$2, updated_at=NOW()',
+        [f.file_name, f.content]
+      );
+      synced++;
+    }
+    res.json({status:'ok', synced, timestamp: new Date().toISOString()});
+  } catch(e) {
+    res.status(500).json({error: e.message});
+  }
+});
+
+app.post('/v1/voice/learning', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { content, source } = req.body;
+  if (!content) return res.status(400).json({error:'content required'});
+  try {
+    await pool.query('INSERT INTO voice_learnings (content, source) VALUES ($1, $2)', [content, source || 'voice']);
+    res.json({status:'ok', message:'learning saved'});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+app.get('/v1/voice/learnings/pending', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  try {
+    const result = await pool.query('SELECT id, content, source, created_at FROM voice_learnings WHERE applied = false ORDER BY created_at ASC');
+    res.json({status:'ok', count: result.rows.length, learnings: result.rows});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+app.post('/v1/voice/learnings/apply', async (req, res) => {
+  const key = req.headers['x-mitra-key'];
+  if (key !== (process.env.MITRA_SYNC_KEY || 'sfsi-mitra-sync-2026')) return res.status(401).json({error:'unauthorized'});
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({error:'ids array required'});
+  try {
+    await pool.query('UPDATE voice_learnings SET applied = true WHERE id = ANY($1)', [ids]);
+    res.json({status:'ok', applied: ids.length});
+  } catch(e) { res.status(500).json({error: e.message}); }
+});
+
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ /v1/smoke ÃÂ¢ÃÂÃÂ permanent health check (build gate + Railway health check URL)
+app.get('/v1/smoke', async (req, res) => {
+  try {
+    await pool.query('SELECT 1 FROM voice_learnings LIMIT 1');
+    const hasKey = !!process.env.ANTHROPIC_API_KEY;
+    res.json({ status: 'ok', db: 'connected', anthropic: hasKey ? 'present' : 'MISSING', ts: new Date().toISOString() });
+  } catch(e) {
+    res.status(503).json({ status: 'error', error: e.message });
+  }
+});
+
+
+app.get('/memory/context', requireKey, async (req, res) => {
+  const context   = await getGlobalContext();
+  const updatedAt = redisReady ? await redisClient.get(CONTEXT_UPDATED_KEY) : null;
+  res.json({ hasContext: context.length > 0, chars: context.length, updatedAt, preview: context.slice(0, 300) });
+});
+
+app.delete('/memory/context', requireKey, async (req, res) => {
+  await setGlobalContext('');
+  res.json({ cleared: true, timestamp: new Date().toISOString() });
+});
+
+// ------------ Command Queue Endpoints ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.get('/commands/pending', requireKey, async (req, res) => {
+  if (!redisReady) return res.json({ commands: [] });
+  try {
+    const entries  = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const commands = entries.map(e => JSON.parse(e)).filter(c => c.status === 'pending_go' || c.status === 'go_received');
+    res.json({ commands, total: entries.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/commands/acknowledge', requireKey, async (req, res) => {
+  const { commandId } = req.body;
+  if (!commandId || !redisReady) return res.status(400).json({ error: 'commandId required' });
+  try {
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    let updated      = false;
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === commandId && c.status === 'pending_go') { c.status = 'go_received'; updated = true; return JSON.stringify(c); } return e; });
+    if (updated) { await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e); }
+    res.json({ acknowledged: updated, commandId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/commands/complete', requireKey, async (req, res) => {
+  const { commandId, output, summary } = req.body;
+  if (!commandId || !output || !redisReady) return res.status(400).json({ error: 'commandId and output required' });
+  try {
+    const result = { commandId, output: output.slice(0, 8000), summary: (summary || output).slice(0, 500), completed_at: new Date().toISOString() };
+    await redisClient.rPush(COMPLETED_OUTPUT_KEY, JSON.stringify(result));
+    await redisClient.lTrim(COMPLETED_OUTPUT_KEY, -10, -1);
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === commandId) { c.status = 'complete'; return JSON.stringify(c); } return e; });
+    await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e);
+    const existingCtx = await getGlobalContext();
+    await setGlobalContext((existingCtx + `\n\n[OUTPUT ------ ${result.completed_at}]\n${result.summary}`).slice(-8000));
+    await tgSend(`Mitra ------\n\nExecution complete.\n\n${escapeHtml(result.summary)}\n\nCall Mitra for verbal brief.`);
+    res.json({ saved: true, commandId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/commands/:id', requireKey, async (req, res) => {
+  if (!redisReady) return res.status(503).json({ error: 'Redis not ready' });
+  try {
+    const entries    = await redisClient.lRange(COMMAND_QUEUE_KEY, 0, -1);
+    const newEntries = entries.map(e => { const c = JSON.parse(e); if (c.id === req.params.id) { c.status = 'cancelled'; return JSON.stringify(c); } return e; });
+    await redisClient.del(COMMAND_QUEUE_KEY); for (const e of newEntries) await redisClient.rPush(COMMAND_QUEUE_KEY, e);
+    res.json({ cancelled: true, commandId: req.params.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ------------ /ask ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/ask', async (req, res) => {
+  const { question, chatId = 'ask-session' } = req.body;
+  if (!question) return res.status(400).json({ error: 'question required' });
+  try {
+    await saveMessage(chatId, 'user', question);
+    const history = await getHistory(chatId, 14);
+    let _basePrompt = await buildSystemPrompt();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
+    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
+    const reply = r.content[0].text;
+    await saveMessage(chatId, 'assistant', reply);
+    res.json({ answer: reply, chatId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ------------ /chat ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/chat', async (req, res) => {
+  const { messages, chatId = 'chat-session' } = req.body;
+  const last = messages?.[messages.length - 1]?.content || '';
+  if (!last) return res.status(400).json({ error: 'no message content' });
+  try {
+    await saveMessage(chatId, 'user', last);
+    const history = await getHistory(chatId, 14);
+    let _basePrompt = await buildSystemPrompt();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
+    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
+    const reply = r.content[0].text;
+    await saveMessage(chatId, 'assistant', reply);
+    res.json({ response: reply, chatId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ------------ /v1/chat/completions ------ Vapi voice -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+app.post('/v1/chat/completions', async (req, res) => {
+  try {
+    const { messages, stream } = req.body;
+    const chatId = 'boss-voice-v2';
+    const msgs = messages.filter(m => m.role !== 'system').map(m => ({
+      role:    m.role === 'assistant' ? 'assistant' : 'user',
+      content: typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''
+    }));
+    if (!msgs.length) msgs.push({ role: 'user', content: 'Hello' });
+
+    const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+    if (lastUser) await saveMessage(chatId, 'user', lastUser.content);
+
+    let commandQueued = false;
+    if (lastUser && isActionRequest(lastUser.content)) {
+      const cmdId = await queueCommand(lastUser.content, 'voice');
+      if (cmdId) commandQueued = true;
+    }
+
+    const history   = await getHistory(chatId, 14);
+    const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
+    let _basePrompt = await buildSystemPrompt();
+    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+
+    if (stream) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      const sr = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
+      const id = `chatcmpl-${Date.now()}`;
+      let fullReply = '';
+      for await (const ev of sr) {
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+          fullReply += ev.delta.text;
+          res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, delta: { role: 'assistant', content: ev.delta.text }, finish_reason: null }] })}\n\n`);
+        }
+        if (ev.type === 'message_stop') {
+          await saveMessage(chatId, 'assistant', fullReply);
+          res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+        }
+      }
+    } else {
+      const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
+      const reply = r.content[0].text;
+      // [BIDIR] Strip [REMEMBER:...] markers, save to voice_learnings
+      const _remMatches = reply.match(/\[REMEMBER:\s*([^\]]+)\]/g) || [];
+      for (const _m of _remMatches) {
+        const _fact = _m.replace(/^\[REMEMBER:\s*/,'').replace(/\]$/,'').trim();
+        pool.query('INSERT INTO voice_learnings (content, source) VALUES ($1, $2)', [_fact, 'voice-auto']).catch(()=>{});
+      }
+      const cleanReply = reply.replace(/\s*\[REMEMBER:[^\]]+\]/g, '').trim();
+      await saveMessage(chatId, 'assistant', reply);
+      if (redisReady) appendToGlobalContext('VOICE: ' + (lastUser && lastUser.content ? lastUser.content : '').slice(0, 150) + ' => ' + (reply || '').slice(0, 150)).catch(() => {});
+
+      res.json({ id: `chatcmpl-${Date.now()}`, object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'mitra-brain-v9', choices: [{ index: 0, message: { role: 'assistant', content: cleanReply }, finish_reason: 'stop' }] });
+    }
+  } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
+});
+
+// ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Start ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+const PORT = process.env.PORT || 3000;
+
+
+// ââ /v1/admin/upsert-companies â bulk upsert company intelligence (DELETE+INSERT)
+app.post('/v1/admin/upsert-companies', requireKey, async (req, res) => {
+  try {
+    const { companies } = req.body;
+    if (!Array.isArray(companies) || companies.length === 0) {
+      return res.status(400).json({ error: 'companies array required' });
+    }
+    let upserted = 0;
+    for (const co of companies) {
+      const { ticker, name, sector, conviction_level, thesis, kill_switch, next_catalyst } = co;
+      if (!ticker) continue;
+      // DELETE all existing rows for this ticker first (removes duplicates at source)
+      await pool.query('DELETE FROM companies WHERE UPPER(ticker) = UPPER($1)', [ticker]);
+      // INSERT clean single row
+      await pool.query(
+        `INSERT INTO companies (ticker, name, sector, conviction_level, thesis, kill_switch, next_catalyst)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [ticker, name||null, sector||null, conviction_level||null, thesis||null, kill_switch||null, next_catalyst||null]
+      );
+      upserted++;
+    }
+    res.json({ status: 'ok', upserted });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+// ââ MITRA TASKS ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+pool.query("CREATE TABLE IF NOT EXISTS mitra_tasks (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status VARCHAR(20) DEFAULT 'pending', priority INTEGER DEFAULT 3, source VARCHAR(50) DEFAULT 'cowork', assigned_to VARCHAR(50) DEFAULT 'mitra', due_date TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ, notes TEXT)").catch(e => console.error('[mitra_tasks] init error:', e.message));
+
+app.post('/v1/tasks', requireKey, async (req, res) => {
+  try {
+    const { title, description, priority, source, assigned_to, due_date, notes } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const r = await pool.query("INSERT INTO mitra_tasks (title,description,priority,source,assigned_to,due_date,notes) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *", [title, description||null, priority||3, source||'cowork', assigned_to||'mitra', due_date||null, notes||null]);
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/v1/tasks', requireKey, async (req, res) => {
+  try {
+    const { status, assigned_to } = req.query;
+    let q = 'SELECT * FROM mitra_tasks WHERE 1=1';
+    const params = [];
+    if (status) { params.push(status); q += ' AND status=$' + params.length; }
+    if (assigned_to) { params.push(assigned_to); q += ' AND assigned_to=$' + params.length; }
+    q += ' ORDER BY priority ASC, created_at ASC';
+    const r = await pool.query(q, params);
+    res.json({ tasks: r.rows, count: r.rows.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/v1/tasks/:id', requireKey, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const fields = req.body;
+    const allowed = ['title','description','status','priority','assigned_to','due_date','notes'];
+    const sets = []; const vals = [];
+    for (const k of allowed) { if (fields[k] !== undefined) { vals.push(fields[k]); sets.push(k + '=$' + vals.length); } }
+    if (sets.length === 0) return res.status(400).json({ error: 'no fields to update' });
+    if (fields.status === 'completed') sets.push('completed_at=NOW()');
+    sets.push('updated_at=NOW()');
+    vals.push(id);
+    const r = await pool.query('UPDATE mitra_tasks SET ' + sets.join(',') + ' WHERE id=$' + vals.length + ' RETURNING *', vals);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
+    res.json(r.rows[0]);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const r = await pool.query("UPDATE mitra_tasks SET status='cancelled', updated_at=NOW() WHERE id=$1 RETURNING id", [id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
+    res.json({ cancelled: r.rows[0].id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(PORT, async () => {
+  console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
+  console.log(`SFSI Chief of Staff | savitrifsi.com`);
+  console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
+  await initRedis();
+  await initPostgres();
+  // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
+  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
+});
+ + q.price + ' | chg: ' + q.change + ' (' + q.changesPercentage + '%)');
+  }
+  if (t.includes('search') || t.includes('news') || t.includes('research') || t.includes('latest')) {
+    const res = await fetchTavily(msgText);
+    if (res) parts.push('[WEB]\n' + res);
+  }
+  if (t.includes('portfolio') || t.includes('score') || t.includes('truthifi')) {
+    const d = await fetchTruthifi('v1/score');
+    if (d) parts.push('[TRUTHIFI] ' + JSON.stringify(d).substring(0, 300));
+  }
+  return parts.length ? '\n\n[LIVE DATA]\n' + parts.join('\n') : '';
+}
 
 const pollTelegram = async () => {
   if (!TG_TOKEN) return;
@@ -797,7 +1419,7 @@ app.post('/v1/voice/learnings/apply', async (req, res) => {
   } catch(e) { res.status(500).json({error: e.message}); }
 });
 
-// Ã¢ÂÂÃ¢ÂÂ /v1/smoke Ã¢ÂÂ permanent health check (build gate + Railway health check URL)
+// ÃÂ¢ÃÂÃÂÃÂ¢ÃÂÃÂ /v1/smoke ÃÂ¢ÃÂÃÂ permanent health check (build gate + Railway health check URL)
 app.get('/v1/smoke', async (req, res) => {
   try {
     await pool.query('SELECT 1 FROM voice_learnings LIMIT 1');
@@ -966,11 +1588,11 @@ app.post('/v1/chat/completions', async (req, res) => {
   } catch (e) { if (!res.headersSent) res.status(500).json({ error: e.message }); }
 });
 
-// ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Start ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
+// ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Start ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ
 const PORT = process.env.PORT || 3000;
 
 
-// ── /v1/admin/upsert-companies — bulk upsert company intelligence (DELETE+INSERT)
+// ââ /v1/admin/upsert-companies â bulk upsert company intelligence (DELETE+INSERT)
 app.post('/v1/admin/upsert-companies', requireKey, async (req, res) => {
   try {
     const { companies } = req.body;
@@ -998,7 +1620,7 @@ app.post('/v1/admin/upsert-companies', requireKey, async (req, res) => {
 });
 
 
-// ── MITRA TASKS ──────────────────────────────────────────────────────────────
+// ââ MITRA TASKS ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 pool.query("CREATE TABLE IF NOT EXISTS mitra_tasks (id SERIAL PRIMARY KEY, title TEXT NOT NULL, description TEXT, status VARCHAR(20) DEFAULT 'pending', priority INTEGER DEFAULT 3, source VARCHAR(50) DEFAULT 'cowork', assigned_to VARCHAR(50) DEFAULT 'mitra', due_date TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW(), completed_at TIMESTAMPTZ, notes TEXT)").catch(e => console.error('[mitra_tasks] init error:', e.message));
 
 app.post('/v1/tasks', requireKey, async (req, res) => {
@@ -1050,11 +1672,11 @@ app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
 });
 
 app.listen(PORT, async () => {
-  console.log(`\nMitra Brain API v11.1 ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
+  console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
   console.log(`SFSI Chief of Staff | savitrifsi.com`);
   console.log(`Port: ${PORT} | ${new Date().toISOString()}\n`);
   await initRedis();
   await initPostgres();
-  // Telegram polling: LIVE ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ enabled 2026-04-21
-  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
+  // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
+  if (TG_TOKEN) { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
 });
