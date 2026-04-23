@@ -489,6 +489,7 @@ const processMessage = async (text, messageId, chatId) => {
   try {
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
+      const _dm = await getToolContext(text);
     const systemPrompt = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: trimmed }];
     const last = messages[messages.length - 1];
@@ -1487,6 +1488,7 @@ app.post('/ask', async (req, res) => {
     await saveMessage(chatId, 'user', question);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
+      const _dm = await getToolContext(question);
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
