@@ -3,7 +3,6 @@ import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from 'redis';
 import pg from 'pg';
-import { fetchDriveMemory } from './google_drive.js';
 
 const { Pool } = pg;
 const app = express();
@@ -489,7 +488,6 @@ const processMessage = async (text, messageId, chatId) => {
   try {
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const _dm = await fetchDriveMemory();
     const systemPrompt = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: trimmed }];
     const last = messages[messages.length - 1];
@@ -879,7 +877,6 @@ app.post('/ask', async (req, res) => {
     await saveMessage(chatId, 'user', question);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const _dm = await fetchDriveMemory();
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 300, system, messages });
@@ -898,7 +895,6 @@ app.post('/chat', async (req, res) => {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const _dm = await fetchDriveMemory();
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
@@ -931,7 +927,6 @@ app.post('/v1/chat/completions', async (req, res) => {
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     let _basePrompt = await buildSystemPrompt();
-    const _dm = await fetchDriveMemory();
     const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
 
     if (stream) {
