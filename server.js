@@ -1108,7 +1108,6 @@ app.listen(PORT, async () => {
   // Telegram polling: LIVE ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ enabled 2026-04-21
  if (process.env.ENABLE_TELEGRAM_POLL === 'true') { pollTelegram(); setInterval(pollTelegram, 30000); } // Enabled 2026-04-21 ÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Global Mitra live on Telegram
 });
- + q.price + ' | chg: ' + q.change + ' (' + q.changesPercentage + '%)');
   }
   if (t.includes('search') || t.includes('news') || t.includes('research') || t.includes('latest')) {
     const res = await fetchTavily(msgText);
@@ -1119,7 +1118,6 @@ app.listen(PORT, async () => {
     if (d) parts.push('[TRUTHIFI] ' + JSON.stringify(d).substring(0, 300));
   }
   return parts.length ? '\n\n[LIVE DATA]\n' + parts.join('\n') : '';
-}
 
 const pollTelegram = async () => {
   if (!TG_TOKEN) return;
