@@ -257,6 +257,23 @@ const createSchema = async () => {
       created_at       TIMESTAMPTZ DEFAULT NOW()
     );
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mitra_tasks (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      status VARCHAR(20) DEFAULT 'pending',
+      priority INTEGER DEFAULT 3,
+      source VARCHAR(50) DEFAULT 'cowork',
+      assigned_to VARCHAR(50) DEFAULT 'mitra',
+      due_date TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      completed_at TIMESTAMPTZ,
+      notes TEXT
+    )
+  `);
+
     CREATE INDEX IF NOT EXISTS idx_tax_lots_open    ON tax_lots(sid, account_id) WHERE is_open = TRUE;
     CREATE INDEX IF NOT EXISTS idx_tax_lots_account ON tax_lots(account_id, acquisition_date);
     -- Seed Fidelity account if not exists
@@ -997,6 +1014,74 @@ app.post('/v1/admin/upsert-companies', requireKey, async (req, res) => {
   }
 });
 
+
+
+// ──────────────────────────────────────────────────────────
+// MITRA TASKS — Queue Management
+// ──────────────────────────────────────────────────────────
+
+// POST /v1/tasks — create a task
+app.post('/v1/tasks', requireKey, async (req, res) => {
+  try {
+    const { title, description, priority, source, assigned_to, due_date, notes } = req.body;
+    if (!title) return res.status(400).json({ error: 'title required' });
+    const r = await pool.query(
+      `INSERT INTO mitra_tasks (title, description, priority, source, assigned_to, due_date, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [title, description||null, priority||3, source||'cowork', assigned_to||'mitra', due_date||null, notes||null]
+    );
+    res.json({ status: 'ok', task: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /v1/tasks — list tasks (optional ?status=pending)
+app.get('/v1/tasks', requireKey, async (req, res) => {
+  try {
+    const { status, limit } = req.query;
+    let q = 'SELECT * FROM mitra_tasks';
+    const params = [];
+    if (status) { q += ' WHERE status = $1'; params.push(status); }
+    q += ' ORDER BY priority ASC, created_at DESC';
+    q += ' LIMIT ' + (parseInt(limit) || 50);
+    const r = await pool.query(q, params);
+    res.json({ tasks: r.rows, count: r.rows.length });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /v1/tasks/:id — update status, notes, assigned_to
+app.patch('/v1/tasks/:id', requireKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes, assigned_to, priority } = req.body;
+    const completedAt = status === 'completed' ? 'NOW()' : 'completed_at';
+    const r = await pool.query(
+      `UPDATE mitra_tasks SET
+         status = COALESCE($1, status),
+         notes = COALESCE($2, notes),
+         assigned_to = COALESCE($3, assigned_to),
+         priority = COALESCE($4, priority),
+         updated_at = NOW(),
+         completed_at = CASE WHEN $1 = 'completed' THEN NOW() ELSE completed_at END
+       WHERE id = $5 RETURNING *`,
+      [status||null, notes||null, assigned_to||null, priority||null, id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
+    res.json({ status: 'ok', task: r.rows[0] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /v1/tasks/:id — cancel (soft delete via status)
+app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const r = await pool.query(
+      'UPDATE mitra_tasks SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id',
+      ['cancelled', id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ error: 'task not found' });
+    res.json({ status: 'ok', cancelled_id: r.rows[0].id });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.listen(PORT, async () => {
   console.log(`\nMitra Brain API v11.1 ÃÂÃÂ¢ÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
