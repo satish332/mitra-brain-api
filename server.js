@@ -1053,13 +1053,13 @@ app.post('/ask', async (req, res) => {
         const answer = tb?.text || '';
         return res.json({ answer, chatId });
       }
-} catch (e) {
+  } catch (e) {
   const msg = e.message || '';
   if (msg.includes('429') || msg.includes('rate_limit')) {
     return res.status(429).json({ error: 'rate_limit', answer: 'Mitra (Global - Railway)\n\nRate limit reached (30k TPM). Please retry in 60 seconds.', chatId });
   }
   res.status(500).json({ error: msg, chatId });
-}
+  }
 });
 
 // ------------ /v1/test-fmp -----------------------------------------------------------------------------------------------------------
