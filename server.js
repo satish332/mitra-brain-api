@@ -1053,6 +1053,7 @@ app.post('/ask', async (req, res) => {
         const answer = tb?.text || '';
         return res.json({ answer, chatId });
       }
+    }
   } catch (e) {
   const msg = e.message || '';
   if (msg.includes('429') || msg.includes('rate_limit')) {
