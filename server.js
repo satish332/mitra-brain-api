@@ -511,7 +511,7 @@ const processMessage = async (text, messageId, chatId) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
-      system: systemPrompt,
+      system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
       tools: MITRA_TOOLS,
       tool_choice: activeToolChoice,
       messages: toolMsgs
@@ -1043,7 +1043,7 @@ app.post('/ask', async (req, res) => {
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
-        system,
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
         tools: MITRA_TOOLS,
         tool_choice: activeToolChoice,
         messages: toolMsgs
@@ -1097,7 +1097,7 @@ app.post('/chat', async (req, res) => {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const system = _basePrompt;
+    const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
@@ -1129,7 +1129,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     let _basePrompt = await buildSystemPrompt();
-    const system = _basePrompt;
+    const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -1319,74 +1319,6 @@ RESPONSE FORMAT:
 BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
 Voice: Vapi +1 (949) 516-9654`;
 
-const buildSystemPrompt = async () => {
-  const ctx = await getGlobalContext();
-
-  // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
-  let twinContext = '';
-  if (pgReady) {
-    var memRows = await pool.query('SELECT file_name, content FROM memory ORDER BY updated_at DESC').catch(()=>({rows:[]}));
-      var memorySection = memRows.rows.length > 0 ? memRows.rows.map(r => r.content).join('\n\n---\n\n').slice(0, 9000) : '';
-
-  try {
-            const { rows: positions } = await pool.query(
-        `SELECT agg.ticker,
-                COALESCE(c.name, agg.ticker) AS name,
-                c.sector, c.conviction_level, c.thesis, c.kill_switch, c.next_catalyst,
-                agg.shares, agg.avg_cost, agg.total_cost_basis, agg.first_acquired
-         FROM (
-           SELECT s.ticker,
-                  SUM(tl.remaining_quantity) AS shares,
-                  AVG(tl.cost_basis_per_share) AS avg_cost,
-                  SUM(tl.remaining_quantity * tl.cost_basis_per_share) AS total_cost_basis,
-                  MIN(tl.acquisition_date) AS first_acquired
-           FROM tax_lots tl
-           JOIN securities s ON s.sid = tl.sid
-           WHERE tl.account_id = '15237882' AND tl.is_open = TRUE
-           GROUP BY s.ticker
-         ) agg
-         LEFT JOIN companies c ON UPPER(c.ticker) = UPPER(agg.ticker)
-         ORDER BY agg.total_cost_basis DESC NULLS LAST`
-      );
-      const { rows: watchlist } = await pool.query(
-        `SELECT name, ticker, sector, conviction_level, thesis, kill_switch, next_catalyst
-         FROM companies WHERE status NOT IN ('Position Open') ORDER BY conviction_level DESC LIMIT 20`
-      );
-
-      twinContext = '\n\n--- DIGITAL TWIN --- SFSI LIVE PORTFOLIO & WATCHLIST ---\n';
-
-      if (positions.length > 0) {
-        twinContext += `OPEN POSITIONS (${positions.length}):\n`;
-        for (const p of positions) {
-          const shares = p.shares ? `${parseFloat(p.shares).toFixed(3)} shares` : '';
-          const cost = p.avg_cost ? `@ $${parseFloat(p.avg_cost).toFixed(2)} avg` : '';
-          const total = p.total_cost_basis ? `($${Math.round(parseFloat(p.total_cost_basis)).toLocaleString()} invested)` : '';
-          const thesis = p.thesis && !p.thesis.includes('Thesis Pending') ? ` | ${p.thesis.slice(0, 120)}` : '';
-          const kill = p.kill_switch ? ` | Kill switch: ${p.kill_switch.slice(0, 80)}` : '';
-          const catalyst = p.next_catalyst ? ` | Next catalyst: ${p.next_catalyst}` : '';
-          twinContext += `--- ${p.name} (${p.ticker}) | ${p.sector || 'N/A'} | ${shares} ${cost} ${total} | Conviction: ${p.conviction_level || '?'}/5${thesis}${kill}${catalyst}\n`;
-        }
-      }
-
-      if (watchlist.length > 0) {
-        twinContext += `\nWATCHLIST (${watchlist.length} companies):\n`;
-        for (const c of watchlist) {
-          const thesis = c.thesis && !c.thesis.includes('Thesis Pending') ? ` | ${c.thesis.slice(0, 100)}` : '';
-          const kill = c.kill_switch ? ` | Kill: ${c.kill_switch.slice(0, 60)}` : '';
-          twinContext += `--- ${c.name} (${c.ticker}) | ${c.sector} | Conviction: ${c.conviction_level}/5${thesis}${kill}\n`;
-        }
-      }
-
-      twinContext += '--- END DIGITAL TWIN ---';
-    } catch (e) {
-      twinContext = `\n[Digital Twin query error: ${e.message}]`;
-    }
-  }
-
-  const base = MITRA_BASE_PROMPT + twinContext;
-  if (!ctx) return base;
-  return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
-};
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
@@ -1640,7 +1572,9 @@ app.post('/ask', async (req, res) => {
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
       const _dm = await getToolContext(question);
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = _dm
+      ? [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }, { type: 'text', text: _dm }]
+      : [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
     const messages = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: question }];
     const needsStock = /price|quote|stock|ticker|market cap|earnings/i.test(question);
     const needsSearch = /news|search|latest|recent|research/i.test(question);
@@ -1690,7 +1624,7 @@ app.post('/chat', async (req, res) => {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const system = _basePrompt;
+    const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
@@ -1722,7 +1656,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     let _basePrompt = await buildSystemPrompt();
-    const system = _basePrompt;
+    const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
