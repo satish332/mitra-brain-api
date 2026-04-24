@@ -11,6 +11,54 @@ app.use(express.json());
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, maxRetries: 0 });
 
+
+// ===== PATCH B+C (2026-04-24): 429 retry + Haiku tiering =====
+async function callAnthropicWithRetry(params, maxRetries = 3) {
+  let lastErr;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await anthropic.messages.create(params);
+    } catch (err) {
+      lastErr = err;
+      if (err && err.status === 429) {
+        const hdr = (err.headers && (err.headers["retry-after"] || (err.headers.get && err.headers.get("retry-after")))) || "5";
+        const waitMs = Math.min(60000, (parseFloat(hdr) || 5) * 1000);
+        console.log("[retry] 429 rate_limit waiting " + waitMs + "ms attempt " + (i+1) + "/" + (maxRetries+1));
+        if (i === maxRetries) break;
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  const e = new Error("429 rate_limit persisted after " + (maxRetries+1) + " attempts");
+  e.status = 429;
+  e.original = lastErr;
+  throw e;
+}
+
+async function classifyWithHaiku(userText) {
+  if (!userText || typeof userText !== "string") return { kind: "unknown" };
+  const t = userText.trim().toLowerCase();
+  if (t.length < 3) return { kind: "ack" };
+  const ackRe = /^(hi|hello|hey|thanks|thank you|ok|okay|got it|good|great|cool|bye|goodbye|yes|no|sure|alright)[.!?\s]*$/i;
+  if (ackRe.test(t)) return { kind: "ack" };
+  try {
+    const r = await callAnthropicWithRetry({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 8,
+      system: "Classify in ONE word: ACK (greeting/thanks), SIMPLE (short question), or COMPLEX. Reply only the word.",
+      messages: [{ role: "user", content: userText.slice(0, 500) }]
+    }, 1);
+    const out = ((r && r.content && r.content[0] && r.content[0].text) || "").trim().toUpperCase();
+    if (out.startsWith("ACK")) return { kind: "ack" };
+    if (out.startsWith("SIMPLE")) return { kind: "simple" };
+    return { kind: "complex" };
+  } catch (e) {
+    return { kind: "complex" };
+  }
+}
+// ===== END PATCH B+C =====
 // ------------ FMP Market Data Helper ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const FMP_KEY = process.env.FMP_API_KEY || '';
 const FMP_BASE = 'https://financialmodelingprep.com/api/v3';
@@ -508,7 +556,7 @@ const processMessage = async (text, messageId, chatId) => {
   let reply = '';
   const toolMsgs = [...workMessages];
   for (let guard = 0; guard < 8; guard++) {
-    const response = await anthropic.messages.create({
+    const response = await callAnthropicWithRetry({
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
@@ -1040,7 +1088,7 @@ app.post('/ask', async (req, res) => {
     let reply = '';
     const toolMsgs = [...messages];
     for (let guard = 0; guard < 8; guard++) {
-      const response = await anthropic.messages.create({
+      const response = await callAnthropicWithRetry({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
@@ -1099,7 +1147,7 @@ app.post('/chat', async (req, res) => {
     let _basePrompt = await buildSystemPrompt();
     const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
-    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
+    const r = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
     await saveMessage(chatId, 'assistant', reply);
     res.json({ response: reply, chatId });
@@ -1135,7 +1183,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      const sr = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
+      const sr = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
       const id = `chatcmpl-${Date.now()}`;
       let fullReply = '';
       for await (const ev of sr) {
@@ -1151,7 +1199,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
       }
     } else {
-      const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
+      const r = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
       const reply = r.content[0].text;
       // [BIDIR] Strip [REMEMBER:...] markers, save to voice_learnings
       const _remMatches = reply.match(/\[REMEMBER:\s*([^\]]+)\]/g) || [];
@@ -1653,7 +1701,7 @@ app.post('/ask', async (req, res) => {
     let reply = '';
     const toolMsgs = [...messages];
     for (let guard = 0; guard < 8; guard++) {
-      const response = await anthropic.messages.create({
+      const response = await callAnthropicWithRetry({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system,
@@ -1696,7 +1744,7 @@ app.post('/chat', async (req, res) => {
     let _basePrompt = await buildSystemPrompt();
     const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
     const msgs = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
-    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
+    const r = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
     await saveMessage(chatId, 'assistant', reply);
     res.json({ response: reply, chatId });
@@ -1733,7 +1781,7 @@ app.post('/v1/chat/completions', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      const sr = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
+      const sr = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs, stream: true });
       const id = `chatcmpl-${Date.now()}`;
       let fullReply = '';
       for await (const ev of sr) {
@@ -1749,7 +1797,7 @@ app.post('/v1/chat/completions', async (req, res) => {
         }
       }
     } else {
-      const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
+      const r = await callAnthropicWithRetry({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: finalMsgs });
       const reply = r.content[0].text;
       // [BIDIR] Strip [REMEMBER:...] markers, save to voice_learnings
       const _remMatches = reply.match(/\[REMEMBER:\s*([^\]]+)\]/g) || [];
