@@ -697,7 +697,7 @@ RESPONSE FORMAT:
 BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
 Voice: Vapi +1 (949) 516-9654`;
 
-const buildSystemPrompt = async () => {
+let buildSystemPrompt = async () => {
   const ctx = await getGlobalContext();
 
   // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
@@ -767,6 +767,17 @@ const buildSystemPrompt = async () => {
   if (!ctx) return base;
   return `${base}${memorySection ? '\n\n=== SFSI MEMORY ===\n' + memorySection + '\n=== END MEMORY ===' : ''}\n\n--- COWORK MEMORY SYNC ---\n${ctx}\n--- END COWORK MEMORY ---`;
 };
+
+// 5-min prompt cache — prevents 61-ticker DB rebuild on every request
+const _buildRaw = buildSystemPrompt;
+let _promptCache = null, _promptCacheTs = 0;
+buildSystemPrompt = async () => {
+  if (_promptCache && Date.now() < _promptCacheTs) return _promptCache;
+  _promptCache = await _buildRaw();
+  _promptCacheTs = Date.now() + 300000;
+  return _promptCache;
+};
+
 
 // ------------ Auth ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 const MITRA_SYNC_KEY = process.env.MITRA_SYNC_KEY;
