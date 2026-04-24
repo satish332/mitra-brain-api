@@ -1685,6 +1685,26 @@ app.post('/ask', async (req, res) => {
 
 
 // ------------ /v1/chat/completions ------ Vapi voice -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+app.post('/chat', async (req, res) => {
+  const { messages, message, chatId = 'chat-session' } = req.body;
+  const last = (Array.isArray(messages) && messages.length > 0 ? messages[messages.length - 1].content : null) || (message && typeof message === 'object' ? message.content : message) || '';
+  if (!last) return res.status(400).json({ error: 'no message content' });
+  try {
+    await saveMessage(chatId, 'user', last);
+    const history = await getHistory(chatId, 14);
+    let _basePrompt = await buildSystemPrompt();
+    const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
+    const msgs = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
+    const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
+    const reply = r.content[0].text;
+    await saveMessage(chatId, 'assistant', reply);
+    res.json({ response: reply, chatId });
+  } catch (e) {
+    console.error('[chat] error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 app.post('/v1/chat/completions', async (req, res) => {
   try {
     const { messages, stream } = req.body;
