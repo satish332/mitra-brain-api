@@ -1118,7 +1118,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     let _basePrompt = await buildSystemPrompt();
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = _basePrompt;
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
@@ -1679,7 +1679,7 @@ app.post('/chat', async (req, res) => {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = _basePrompt;
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
@@ -1711,7 +1711,7 @@ app.post('/v1/chat/completions', async (req, res) => {
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
     let _basePrompt = await buildSystemPrompt();
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = _basePrompt;
 
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
