@@ -1079,14 +1079,14 @@ app.get('/v1/test-fmp/:ticker', async (req, res) => {
 
 // ------------ /chat ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 app.post('/chat', async (req, res) => {
-  const { messages, chatId = 'chat-session' } = req.body;
-  const last = messages?.[messages.length - 1]?.content || '';
+  const { messages, message, chatId = 'chat-session' } = req.body;
+  const last = messages?.[messages.length - 1]?.content || message?.content || '';
   if (!last) return res.status(400).json({ error: 'no message content' });
   try {
     await saveMessage(chatId, 'user', last);
     const history = await getHistory(chatId, 14);
     let _basePrompt = await buildSystemPrompt();
-    const system = _dm ? _dm + '\n\n' + _basePrompt : _basePrompt;
+    const system = _basePrompt;
     const msgs    = history.length > 0 ? history.map(h => ({ role: h.role, content: h.content })) : [{ role: 'user', content: last }];
     const r = await anthropic.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 150, system, messages: msgs });
     const reply = r.content[0].text;
