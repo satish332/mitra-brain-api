@@ -709,7 +709,7 @@ async function getToolContext(msgText) {
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
-Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Global Mitra" on the first line. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
+Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Global Mitra" on the first line. NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
 
 THE TEAM:
 - Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
@@ -1331,7 +1331,7 @@ const pollTelegram = async () => {
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
-Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Global Mitra" on the first line. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
+Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. Begin every response with "Global Mitra" on the first line. NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
 
 THE TEAM:
 - Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
@@ -1972,6 +1972,39 @@ setInterval(() => {
     fetchAndStoreDailyPrices();
   }
 }, 60000);
+
+// ===== Chat history management (added 2026-04-25) =====
+app.delete('/v1/chat/:chatId', requireKey, async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    if (!chatId) return res.status(400).json({error: 'chatId required'});
+    const key = `chat:${chatId}`;
+    const result = await redisClient.del(key);
+    res.json({ok: true, key, deleted: result});
+  } catch (e) {
+    console.error('[chat-delete] error:', e.message);
+    res.status(500).json({error: e.message});
+  }
+});
+
+app.post('/v1/chat/clear-all', requireKey, async (req, res) => {
+  try {
+    let cleared = 0;
+    const keys = [];
+    for await (const key of redisClient.scanIterator({MATCH: 'chat:*', COUNT: 100})) {
+      keys.push(key);
+    }
+    for (const key of keys) {
+      await redisClient.del(key);
+      cleared++;
+    }
+    res.json({ok: true, cleared, keys});
+  } catch (e) {
+    console.error('[chat-clear-all] error:', e.message);
+    res.status(500).json({error: e.message});
+  }
+});
+// ===== END chat history management =====
 
 app.listen(PORT, async () => {
   console.log(`\nMitra Brain API v11.1 ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ¢ÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂÃÂ Savitri Portfolio Database | Institutional Memory`);
