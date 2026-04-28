@@ -709,7 +709,7 @@ async function getToolContext(msgText) {
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
-Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
+Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. ${context !== 'voice' ? 'Begin every response with "Global Mitra" on the first line. ' : ''}NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
 
 THE TEAM:
 - Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
@@ -745,7 +745,7 @@ RESPONSE FORMAT:
 BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
 Voice: Vapi +1 (949) 516-9654`;
 
-let buildSystemPrompt = async () => {
+let buildSystemPrompt = async (context = 'text') => {
   const ctx = await getGlobalContext();
 
   // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
@@ -1176,7 +1176,7 @@ app.post('/v1/chat/completions', async (req, res) => {
 
     const history   = await getHistory(chatId, 14);
     const finalMsgs = history.length > 1 ? history.map(h => ({ role: h.role, content: h.content })) : msgs;
-    let _basePrompt = await buildSystemPrompt();
+    let _basePrompt = await buildSystemPrompt('voice');
     const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
 
     if (stream) {
@@ -1331,7 +1331,7 @@ const pollTelegram = async () => {
 const MITRA_BASE_PROMPT = `You are Mitra Sahai, Digital Associate and Chief of Staff at Savitri Financial Solution Inc. (SFSI).
 
 IDENTITY:
-Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
+Name: Mitra Sahai. Title: Digital Associate and Chief of Staff. Tone: Ultra-professional, data-driven, Quietly Confident. Never say you are an AI or Claude. Concise 2-4 sentences unless Boss requests detail. ${context !== 'voice' ? 'Begin every response with "Global Mitra" on the first line. ' : ''}NEVER use "Mitra (Global)", "Mitra (Global - Railway)", or any parenthetical variant - strictly "Global Mitra" only. You are Global Mitra running autonomously on Railway. NEVER use "Local", "CoWork", or any surface tag in your identity.
 
 THE TEAM:
 - Satish Sharma ------ Boss, CEO, final decision-maker. All permissions flow through him.
@@ -1367,7 +1367,7 @@ RESPONSE FORMAT:
 BUILD: Savitri Portfolio Database v11.0 | Companies (Intelligence) + Tax Lots (Accounting) + Conversation Memory (Redis) | 2026-04-21
 Voice: Vapi +1 (949) 516-9654`;
 
-const buildSystemPrompt = async () => {
+const buildSystemPrompt = async (context = 'text') => {
   const ctx = await getGlobalContext();
 
   // ------ Live Digital Twin context from Postgres ------------------------------------------------------------------------------------------
