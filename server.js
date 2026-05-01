@@ -1309,8 +1309,10 @@ app.delete('/v1/tasks/:id', requireKey, async (req, res) => {
   }
   return parts.length ? '\n\n[LIVE DATA]\n' + parts.join('\n') : '';
 }
+let _tgBusy = false;
 const pollTelegram = async () => {
-  if (!TG_TOKEN) return;
+  if (!TG_TOKEN || _tgBusy) return;
+  _tgBusy = true;
   try {
     const params = new URLSearchParams({ limit: '20' });
     if (lastUpdateId > 0) params.set('offset', String(lastUpdateId + 1));
@@ -1325,6 +1327,7 @@ const pollTelegram = async () => {
     }
     if (lastUpdateId > 0) await fetch(`${TG_API}/getUpdates?offset=${lastUpdateId + 1}&limit=1`);
   } catch {}
+  _tgBusy = false;
 };
 
 // ------------ System Prompt ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1777,6 +1780,44 @@ app.post('/v1/chat/completions', async (req, res) => {
     let _basePrompt = await buildSystemPrompt();
     const system = [{ type: 'text', text: _basePrompt, cache_control: { type: 'ephemeral' } }];
 
+    // VOICE TOOL PIPELINE — FMP + webSearch now wired for live data
+    const _vq = lastUser ? (typeof lastUser.content === 'string' ? lastUser.content : (lastUser.content[0]&&lastUser.content[0].text)||'') : '';
+    const _needsStk = /price|quote|stock|ticker|market.?cap|earnings/i.test(_vq);
+    const _needsSrch = /news|search|latest|recent|research|weather/i.test(_vq);
+    if (_needsStk || _needsSrch) {
+      let _atc = _needsStk ? {type:'tool',name:'get_stock_quote'} : {type:'tool',name:'web_search'};
+      const _tmsgs = [...finalMsgs];
+      let _trep = null;
+      for (let _g = 0; _g < 3; _g++) {
+        const _tr = await callAnthropicWithRetry({model:'claude-sonnet-4-6',max_tokens:1024,system,tools:MITRA_TOOLS,tool_choice:_atc,messages:_tmsgs});
+        if (_tr.stop_reason === 'tool_use') {
+          _atc = {type:'auto'};
+          _tmsgs.push({role:'assistant',content:_tr.content});
+          const _tres = [];
+          for (const _b of _tr.content) {
+            if (_b.type === 'tool_use') {
+              const _r = await executeToolCall(_b.name, _b.input);
+              _tres.push({type:'tool_result',tool_use_id:_b.id,content:typeof _r==='string'?_r:JSON.stringify(_r)});
+            }
+          }
+          _tmsgs.push({role:'user',content:_tres});
+        } else { _trep = _tr.content.find(b=>b.type==='text')?.text||''; break; }
+      }
+      if (_trep) {
+        await saveMessage(chatId,'assistant',_trep);
+        if (stream) {
+          res.setHeader('Content-Type','text/event-stream');
+          res.setHeader('Cache-Control','no-cache');
+          res.setHeader('Connection','keep-alive');
+          const _ts=Date.now();
+          res.write('data: '+JSON.stringify({object:'chat.completion.chunk',created:Math.floor(_ts/1000),model:'mitra-brain',choices:[{index:0,delta:{role:'assistant',content:_trep},finish_reason:null}]})+String.fromCharCode(10)+String.fromCharCode(10));
+          res.write('data: '+JSON.stringify({object:'chat.completion.chunk',created:Math.floor(_ts/1000),model:'mitra-brain',choices:[{index:0,delta:{},finish_reason:'stop'}]})+String.fromCharCode(10)+String.fromCharCode(10));
+          res.write('data: [DONE]'+String.fromCharCode(10)+String.fromCharCode(10));
+          res.end();
+        } else { res.json({response:_trep,chatId,commandQueued}); }
+        return;
+      }
+    }
     if (stream) {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
